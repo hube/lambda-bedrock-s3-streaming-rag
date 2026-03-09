@@ -36,7 +36,7 @@ else
 fi
 
 rm -rf /tmp/embeddings
-python3 ingest.py
+./bin/python3 ingest.py
 
 
 STACK_NAME=$1
