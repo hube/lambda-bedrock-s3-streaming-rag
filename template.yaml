@@ -7,7 +7,7 @@ Description: >
 
   Sample SAM Template for streaming-rag-on-lambda
 
-Parameters: 
+Parameters:
   FunctionURLAuthType:
     Default: AWS_IAM
     Description: What type of auth the Lambda should use for the FunctionURL
@@ -18,9 +18,9 @@ Resources:
 
   DocumentBucket:
     Type: 'AWS::S3::Bucket'
-    Properties: 
-      BucketEncryption: 
-        ServerSideEncryptionConfiguration: 
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
         - ServerSideEncryptionByDefault:
             SSEAlgorithm: AES256
 
@@ -28,12 +28,12 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: index.handler
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       CodeUri: function/.
       Timeout: 300
       MemorySize: 256
       Architectures:
-        - x86_64
+        - arm64
       Environment:
         Variables:
           s3BucketName: !Ref DocumentBucket
@@ -63,7 +63,7 @@ Resources:
               Action:
                 - 'bedrock:InvokeModel'
                 - 'bedrock:InvokeModelWithResponseStream'
-              Resource:  
+              Resource:
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-*'
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-*'
                 - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/mistral.mixtral-*'
