@@ -64,15 +64,20 @@ Resources:
                 - 'bedrock:InvokeModel'
                 - 'bedrock:InvokeModelWithResponseStream'
               Resource:
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-*'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-*'
-                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/mistral.mixtral-*'
+                - 'arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-*'
+                - 'arn:aws:bedrock:*:*:foundation-model/anthropic.claude-*'
+                - 'arn:aws:bedrock:*:*:foundation-model/amazon.titan-*'
             - Effect: Allow
               Action: s3:GetObject
               Resource: !Sub arn:aws:s3:::${DocumentBucket}/*
             - Effect: Allow
               Action: s3:ListBucket
               Resource: !Sub arn:aws:s3:::${DocumentBucket}
+            - Effect: Allow
+              Action:
+                - 'aws-marketplace:ViewSubscriptions'
+                - 'aws-marketplace:Subscribe'
+              Resource: '*'
 
 Outputs:
   StreamingRAGFunction:

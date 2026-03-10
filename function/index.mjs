@@ -1,13 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
-import { LanceDB } from "langchain/vectorstores/lancedb";
-import { BedrockEmbeddings } from "langchain/embeddings/bedrock";
-import { connect } from "vectordb"; // LanceDB
-import { PromptTemplate } from "langchain/prompts";
-import { ChatBedrock } from "langchain/chat_models/bedrock";
-import { StringOutputParser } from "langchain/schema/output_parser";
-import { RunnableSequence, RunnablePassthrough } from "langchain/schema/runnable";
-import { formatDocumentsAsString } from "langchain/util/document";
+import { LanceDB } from "@langchain/community/vectorstores/lancedb";
+import { BedrockEmbeddings, ChatBedrockConverse } from "@langchain/aws";
+import * as lancedb from "@lancedb/lancedb";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { RunnableSequence, RunnablePassthrough } from "@langchain/core/runnables";
+import { formatDocumentsAsString } from "@langchain/classic/util/document";
 
 const lanceDbSrc = process.env.s3BucketName;
 const lanceDbTable = process.env.lanceDbTable;
@@ -15,12 +14,12 @@ const awsRegion = process.env.region;
 
 
 const runChain = async ({query, model, streamingFormat}, responseStream) => {
-    const db = await connect(`s3://${lanceDbSrc}/`);
+    const db = await lancedb.connect(`s3://${lanceDbSrc}/`);
     const table = await db.openTable(lanceDbTable);
     console.log('query', query);
     console.log('model', model);
     console.log('streamingFormat', streamingFormat);
-  
+
     const embeddings = new BedrockEmbeddings({region:awsRegion});
     const vectorStore = new LanceDB(embeddings, {table});
     const retriever = vectorStore.asRetriever();
@@ -32,8 +31,8 @@ const runChain = async ({query, model, streamingFormat}, responseStream) => {
         Question: {question}`
     );
 
-    const llmModel = new ChatBedrock({
-        model: model || 'anthropic.claude-instant-v1',
+    const llmModel = new ChatBedrockConverse({
+        model: model || 'us.anthropic.claude-sonnet-4-6',
         region: awsRegion,
         streaming: true,
         maxTokens: 1000,
@@ -71,8 +70,13 @@ function parseBase64(message) {
 }
 
 export const handler = awslambda.streamifyResponse(async (event, responseStream, _context) => {
-    console.log(JSON.stringify(event));
-    let body = event.isBase64Encoded ? parseBase64(event.body) : JSON.parse(event.body);
+    console.log("Event is %o", event);
+    let body;
+    if (event.body) {
+        body = event.isBase64Encoded ? parseBase64(event.body) : JSON.parse(event.body);
+    } else {
+        body = event;
+    }
     await runChain(body, responseStream);
     console.log(JSON.stringify({"status": "complete"}));
 });
@@ -85,12 +89,12 @@ Sample event 1:
 Sample event 2:
 {
     "query": "What models are available in Amazon Bedrock?",
-    "model": "anthropic.claude-instant-v1"
+    "model": "us.anthropic.claude-sonnet-4-6"
 }
 Sample event 3:
 {
     "query": "What models are available in Amazon Bedrock?",
-    "model": "anthropic.claude-v2",
+    "model": "us.anthropic.claude-sonnet-4-6",
     "streamingFormat": "fetch-event-source"
 }
 */
