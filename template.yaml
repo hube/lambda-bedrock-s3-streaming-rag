@@ -67,6 +67,8 @@ Resources:
                 - 'arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-*'
                 - 'arn:aws:bedrock:*:*:foundation-model/anthropic.claude-*'
                 - 'arn:aws:bedrock:*:*:foundation-model/amazon.titan-*'
+                - 'arn:aws:bedrock:*:*:inference-profile/eu.mistral.pixtral-*'
+                - 'arn:aws:bedrock:*:*:foundation-model/mistral.pixtral-*'
             - Effect: Allow
               Action: s3:GetObject
               Resource: !Sub arn:aws:s3:::${DocumentBucket}/*
