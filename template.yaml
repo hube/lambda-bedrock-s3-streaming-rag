@@ -38,7 +38,7 @@ Resources:
         Variables:
           s3BucketName: !Ref DocumentBucket
           region: !Ref AWS::Region
-          lanceDbTable: doc_table
+          lanceDbTable: vectorstore
       FunctionUrlConfig:
         AuthType: !Ref FunctionURLAuthType
         Cors:

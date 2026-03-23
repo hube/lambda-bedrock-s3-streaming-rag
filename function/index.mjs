@@ -1,12 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
-import { LanceDB } from "@langchain/community/vectorstores/lancedb";
 import { BedrockEmbeddings, ChatBedrockConverse } from "@langchain/aws";
 import * as lancedb from "@lancedb/lancedb";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { RunnableSequence, RunnablePassthrough } from "@langchain/core/runnables";
-import { formatDocumentsAsString } from "@langchain/classic/util/document";
 
 const lanceDbSrc = process.env.s3BucketName;
 const lanceDbTable = process.env.lanceDbTable;
@@ -14,15 +11,23 @@ const awsRegion = process.env.region;
 
 
 const runChain = async ({query, model, streamingFormat}, responseStream) => {
-    const db = await lancedb.connect(`s3://${lanceDbSrc}/`);
-    const table = await db.openTable(lanceDbTable);
+    const lanceDbS3Uri = `s3://${lanceDbSrc}/`;
+
+    console.log('lanceDbS3Uri', lanceDbS3Uri);
+    console.log('lanceDbTable', lanceDbTable);
+    console.log('awsRegion', awsRegion);
     console.log('query', query);
     console.log('model', model);
     console.log('streamingFormat', streamingFormat);
 
+    const db = await lancedb.connect(lanceDbS3Uri);
+    const table = await db.openTable(lanceDbTable);
+
     const embeddings = new BedrockEmbeddings({region:awsRegion});
-    const vectorStore = new LanceDB(embeddings, {table});
-    const retriever = vectorStore.asRetriever();
+    const queryEmbedding = await embeddings.embedQuery(query);
+    const results = await table.query().nearestTo(queryEmbedding).limit(4).toArray();
+    const context = results.map(r => r.text).filter(Boolean).join('\n\n');
+    console.log('retrieved chunks', results.length);
 
     const prompt = PromptTemplate.fromTemplate(
         `Answer the following question based only on the following context:
@@ -38,17 +43,8 @@ const runChain = async ({query, model, streamingFormat}, responseStream) => {
         maxTokens: 1000,
     });
 
-    const chain = RunnableSequence.from([
-        {
-            context: retriever.pipe(formatDocumentsAsString),
-            question: new RunnablePassthrough()
-        },
-        prompt,
-        llmModel,
-        new StringOutputParser()
-    ]);
-
-    const stream = await chain.stream(query);
+    const chain = prompt.pipe(llmModel).pipe(new StringOutputParser());
+    const stream = await chain.stream({ context, question: query });
     for await (const chunk of stream){
         console.log(chunk);
         switch (streamingFormat) {
