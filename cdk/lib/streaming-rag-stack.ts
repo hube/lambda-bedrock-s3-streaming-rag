@@ -12,23 +12,18 @@ export interface StreamingRagStackProps extends cdk.StackProps {
    * @default 'AWS_IAM'
    */
   functionUrlAuthType?: lambda.FunctionUrlAuthType;
+
+  vectorDbBucket: s3.Bucket;
 }
 
 export class StreamingRagStack extends cdk.Stack {
   public readonly functionUrl: lambda.FunctionUrl;
   public readonly lambdaFunction: lambda.Function;
-  public readonly vectorDbBucket: s3.Bucket;
 
-  constructor(scope: Construct, id: string, props: StreamingRagStackProps = {}) {
+  constructor(scope: Construct, id: string, props: StreamingRagStackProps) {
     super(scope, id, props);
 
     const authType = props.functionUrlAuthType ?? lambda.FunctionUrlAuthType.AWS_IAM;
-
-    // S3 bucket for LanceDB vector store
-    this.vectorDbBucket = new s3.Bucket(this, 'VectorDbBucket', {
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
 
     const functionDir = path.join(__dirname, '../../function');
 
@@ -64,7 +59,7 @@ export class StreamingRagStack extends cdk.Stack {
       memorySize: 256,
       architecture: lambda.Architecture.ARM_64,
       environment: {
-        s3BucketName: this.vectorDbBucket.bucketName,
+        s3BucketName: props.vectorDbBucket.bucketName,
         region: this.region,
         lanceDbTable: 'vectorstore',
       },
@@ -86,7 +81,7 @@ export class StreamingRagStack extends cdk.Stack {
     );
 
     // S3 permissions
-    this.vectorDbBucket.grantRead(this.lambdaFunction);
+    props.vectorDbBucket.grantRead(this.lambdaFunction);
 
     // AWS Marketplace permissions (required by some Bedrock models)
     this.lambdaFunction.addToRolePolicy(
@@ -116,11 +111,6 @@ export class StreamingRagStack extends cdk.Stack {
         allowedOrigins: ['*'],
         maxAge: cdk.Duration.seconds(0),
       },
-    });
-
-    new cdk.CfnOutput(this, 'VectorDbBucketName', {
-      description: 'S3 bucket where LanceDB sources embeddings',
-      value: this.vectorDbBucket.bucketName,
     });
   }
 }
