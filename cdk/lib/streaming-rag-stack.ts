@@ -17,7 +17,7 @@ export interface StreamingRagStackProps extends cdk.StackProps {
 export class StreamingRagStack extends cdk.Stack {
   public readonly functionUrl: lambda.FunctionUrl;
   public readonly lambdaFunction: lambda.Function;
-  public readonly documentBucket: s3.Bucket;
+  public readonly vectorDbBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: StreamingRagStackProps = {}) {
     super(scope, id, props);
@@ -25,9 +25,9 @@ export class StreamingRagStack extends cdk.Stack {
     const authType = props.functionUrlAuthType ?? lambda.FunctionUrlAuthType.AWS_IAM;
 
     // S3 bucket for LanceDB vector store
-    this.documentBucket = new s3.Bucket(this, 'DocumentBucket', {
+    this.vectorDbBucket = new s3.Bucket(this, 'VectorDbBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const functionDir = path.join(__dirname, '../../function');
@@ -64,7 +64,7 @@ export class StreamingRagStack extends cdk.Stack {
       memorySize: 256,
       architecture: lambda.Architecture.ARM_64,
       environment: {
-        s3BucketName: this.documentBucket.bucketName,
+        s3BucketName: this.vectorDbBucket.bucketName,
         region: this.region,
         lanceDbTable: 'vectorstore',
       },
@@ -86,7 +86,7 @@ export class StreamingRagStack extends cdk.Stack {
     );
 
     // S3 permissions
-    this.documentBucket.grantRead(this.lambdaFunction);
+    this.vectorDbBucket.grantRead(this.lambdaFunction);
 
     // AWS Marketplace permissions (required by some Bedrock models)
     this.lambdaFunction.addToRolePolicy(
@@ -118,9 +118,9 @@ export class StreamingRagStack extends cdk.Stack {
       },
     });
 
-    new cdk.CfnOutput(this, 'DocumentBucketName', {
+    new cdk.CfnOutput(this, 'VectorDbBucketName', {
       description: 'S3 bucket where LanceDB sources embeddings',
-      value: this.documentBucket.bucketName,
+      value: this.vectorDbBucket.bucketName,
     });
   }
 }
