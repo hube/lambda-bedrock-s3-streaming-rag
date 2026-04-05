@@ -1,10 +1,10 @@
-import * as cdk from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import { Construct } from 'constructs';
-import * as path from 'path';
-import { spawnSync } from 'child_process';
+import * as cdk from "aws-cdk-lib";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as iam from "aws-cdk-lib/aws-iam";
+import { Construct } from "constructs";
+import * as path from "path";
+import { spawnSync } from "child_process";
 
 export interface StreamingRagStackProps extends cdk.StackProps {
   /**
@@ -23,25 +23,26 @@ export class StreamingRagStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: StreamingRagStackProps) {
     super(scope, id, props);
 
-    const authType = props.functionUrlAuthType ?? lambda.FunctionUrlAuthType.AWS_IAM;
+    const authType =
+      props.functionUrlAuthType ?? lambda.FunctionUrlAuthType.AWS_IAM;
 
-    const functionDir = path.join(__dirname, '../../function');
+    const functionDir = path.join(__dirname, "../../function");
 
     // Lambda function using the AWS-provided nodejs24.x runtime
-    this.lambdaFunction = new lambda.Function(this, 'StreamingRAGFunction', {
+    this.lambdaFunction = new lambda.Function(this, "StreamingRAGFunction", {
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: 'index.handler',
+      handler: "index.handler",
       code: lambda.Code.fromAsset(functionDir, {
         bundling: {
           local: {
             tryBundle(outputDir: string): boolean {
               const result = spawnSync(
-                'bash',
+                "bash",
                 [
-                  '-c',
+                  "-c",
                   `cp -r ${functionDir}/. "${outputDir}" && cd "${outputDir}" && npm install --omit=dev`,
                 ],
-                { stdio: 'inherit' },
+                { stdio: "inherit" },
               );
               return result.status === 0;
             },
@@ -49,9 +50,9 @@ export class StreamingRagStack extends cdk.Stack {
           // Docker fallback (used in CI environments without local Node)
           image: lambda.Runtime.NODEJS_24_X.bundlingImage,
           command: [
-            'bash',
-            '-c',
-            'cp -r . /asset-output/ && cd /asset-output && npm install --omit=dev',
+            "bash",
+            "-c",
+            "cp -r . /asset-output/ && cd /asset-output && npm install --omit=dev",
           ],
         },
       }),
@@ -61,7 +62,7 @@ export class StreamingRagStack extends cdk.Stack {
       environment: {
         s3BucketName: props.vectorDbBucket.bucketName,
         region: this.region,
-        lanceDbTable: 'vectorstore',
+        lanceDbTable: "vectorstore",
       },
     });
 
@@ -69,7 +70,10 @@ export class StreamingRagStack extends cdk.Stack {
     this.lambdaFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ],
         resources: [
           `arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-*`,
           `arn:aws:bedrock:*:*:foundation-model/anthropic.claude-*`,
@@ -87,8 +91,11 @@ export class StreamingRagStack extends cdk.Stack {
     this.lambdaFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
-        resources: ['*'],
+        actions: [
+          "aws-marketplace:ViewSubscriptions",
+          "aws-marketplace:Subscribe",
+        ],
+        resources: ["*"],
       }),
     );
 
@@ -99,16 +106,16 @@ export class StreamingRagStack extends cdk.Stack {
       cors: {
         allowCredentials: true,
         allowedHeaders: [
-          'x-amz-security-token',
-          'x-amz-date',
-          'x-amz-content-sha256',
-          'referer',
-          'content-type',
-          'accept',
-          'authorization',
+          "x-amz-security-token",
+          "x-amz-date",
+          "x-amz-content-sha256",
+          "referer",
+          "content-type",
+          "accept",
+          "authorization",
         ],
         allowedMethods: [lambda.HttpMethod.ALL],
-        allowedOrigins: ['*'],
+        allowedOrigins: ["*"],
         maxAge: cdk.Duration.seconds(0),
       },
     });
