@@ -4,7 +4,7 @@
     "composite": true,
     "strict": true,
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": "./"
   },
   "include": ["bin/*", "lib/*"],
   "exclude": ["node_modules", "dist"]
