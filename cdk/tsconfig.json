@@ -1,18 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["es2020"],
-    "declaration": true,
+    "target": "esnext",
+    "composite": true,
     "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "esModuleInterop": true,
-    "skipLibCheck": true
   },
+  "include": ["bin/*", "lib/*"],
   "exclude": ["node_modules", "dist"]
 }
