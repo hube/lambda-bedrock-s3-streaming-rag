@@ -41,20 +41,40 @@ async function downloadFromS3(bucket: string, key: string): Promise<string> {
   return tmpPath;
 }
 
-async function ingest(chunks: string[], source: string): Promise<number> {
-  const embeddings = new BedrockEmbeddings({ region: REGION });
-  const vectors = await embeddings.embedDocuments(chunks);
+async function ingest(chunks: string[], sourceS3ObjectKey: string): Promise<number> {
+  console.log(`Ingesting ${chunks.length} from ${sourceS3ObjectKey} into a DB`);
 
-  const records = chunks.map((text, i) => ({ vector: vectors[i], text, source }));
+  const embeddings = new BedrockEmbeddings({ region: REGION });
+  console.log(`Created BedrockEmbeddings ${embeddings}`);
+
+  const vectors = await embeddings.embedDocuments(chunks);
+  console.log(`Created vectors ${vectors}`);
+
+  const records = chunks.map((text, i) => ({ vector: vectors[i], text, sourceS3ObjectKey }));
+  console.log(`Created ${records.length} records`);
 
   const db = await lancedb.connect(`s3://${BUCKET_NAME}/`);
+  console.log(`Connected to DB in ${BUCKET_NAME}`);
+
   const tableNames = await db.tableNames();
+  console.log(`Queried table names ${tableNames}`);
+
+  console.log(`Searching for ${TABLE_NAME}`);
   if (tableNames.includes(TABLE_NAME)) {
+    console.log(`Found ${TABLE_NAME} in list of table names`);
+
     const table = await db.openTable(TABLE_NAME);
+    console.log(`Opened table ${TABLE_NAME}`);
+
     await table.add(records);
+    console.log(`Added ${records.length} records to table ${TABLE_NAME}`);
   } else {
+    console.log(`Didn't find ${TABLE_NAME}, creating the table`);
     await db.createTable(TABLE_NAME, records);
+    console.log(`Finished creating table ${TABLE_NAME}`);
   }
+
+  console.log(`DONE`);
 
   return records.length;
 }
