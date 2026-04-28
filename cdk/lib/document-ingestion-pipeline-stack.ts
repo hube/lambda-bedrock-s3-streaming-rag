@@ -49,7 +49,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
                   "bash",
                   [
                     "-c",
-                    `cd "${functionDir}" && yarn install && yarn build && cp -r dist/. "${outputDir}" && cp package.json "${outputDir}" && cd "${outputDir}" && yarn install`,
+                    `cd "${functionDir}" && yarn install && yarn build && cp -r dist/. "${outputDir}" && cp package.json "${outputDir}" && cd "${outputDir}" && yarn install --prod`,
                   ],
                   { stdio: "inherit" },
                 );
@@ -60,7 +60,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
             command: [
               "bash",
               "-c",
-              "yarn install && yarn build && cp -r dist/. /asset-output/ && cp package.json /asset-output/ && cd /asset-output && yarn install",
+              "yarn install && yarn build && cp -r dist/. /asset-output/ && cp package.json /asset-output/ && cd /asset-output && yarn install --prod",
             ],
           },
         }),
