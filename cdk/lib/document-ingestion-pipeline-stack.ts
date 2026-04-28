@@ -1,7 +1,10 @@
 import * as cdk from "aws-cdk-lib";
+import * as events from "aws-cdk-lib/aws-events";
+import * as events_targets from "aws-cdk-lib/aws-events-targets";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -9,6 +12,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
   public readonly unprocessedDocumentsBucket: s3.Bucket;
   public readonly vectorDbBucket: s3.Bucket;
   public readonly lambdaFunction: lambda.Function;
+  public readonly eventBus: events.IEventBus;
 
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
     super(scope, id, props);
@@ -18,14 +22,13 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "UnprocessedDocumentsBucket",
       {
-        encryption: s3.BucketEncryption.S3_MANAGED,
+        eventBridgeEnabled: true,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       },
     );
 
     // S3 bucket for LanceDB vector store
     this.vectorDbBucket = new s3.Bucket(this, "VectorDbBucket", {
-      encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -36,37 +39,71 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "DocumentVectorizationFunction",
       {
-        runtime: lambda.Runtime.PYTHON_3_14,
-        handler: "ingest.handler",
+        runtime: lambda.Runtime.NODEJS_24_X,
+        handler: "index.handler",
         code: lambda.Code.fromAsset(functionDir, {
           bundling: {
             local: {
               tryBundle(outputDir: string): boolean {
-                try {
-                  execSync("pip3 --version");
-                } catch {
-                  return false;
-                }
-
-                const commands = [
-                  `cd ${functionDir}`,
-                  `pip3 install -r requirements.txt -t ${outputDir}`,
-                  `cp -a . ${outputDir}`,
-                ];
-
-                execSync(commands.join(" && "));
-                return true;
+                const result = spawnSync(
+                  "bash",
+                  [
+                    "-c",
+                    `cd "${functionDir}" && yarn install && yarn build && cp -r dist/. "${outputDir}" && cp package.json "${outputDir}" && cd "${outputDir}" && yarn install`,
+                  ],
+                  { stdio: "inherit" },
+                );
+                return result.status === 0;
               },
             },
-            image: lambda.Runtime.PYTHON_3_14.bundlingImage,
+            image: lambda.Runtime.NODEJS_24_X.bundlingImage,
+            command: [
+              "bash",
+              "-c",
+              "yarn install && yarn build && cp -r dist/. /asset-output/ && cp package.json /asset-output/ && cd /asset-output && yarn install",
+            ],
           },
         }),
         timeout: cdk.Duration.seconds(300),
+        memorySize: 512,
         architecture: lambda.Architecture.ARM_64,
+        environment: {
+          s3BucketName: this.vectorDbBucket.bucketName,
+          region: this.region,
+          lanceDbTable: "vectorstore",
+        },
       },
     );
 
-    // TODO: add EventBridge router
+    // S3 permissions
+    this.unprocessedDocumentsBucket.grantRead(this.lambdaFunction);
+    this.vectorDbBucket.grantReadWrite(this.lambdaFunction);
+
+    // Bedrock permission for Titan embeddings
+    this.lambdaFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock:InvokeModel"],
+        resources: [`arn:aws:bedrock:*:*:foundation-model/amazon.titan-*`],
+      }),
+    );
+
+    this.eventBus = events.EventBus.fromEventBusName(
+      this,
+      "DefaultEventBus",
+      "default",
+    );
+    new events.Rule(this, "S3ObjectAddedRule", {
+      eventBus: this.eventBus,
+      eventPattern: {
+        detailType: ["Object Created"],
+        source: ["aws.s3"],
+        detail: {
+          bucket: { name: [this.unprocessedDocumentsBucket.bucketName] },
+        },
+      },
+      targets: [new events_targets.LambdaFunction(this.lambdaFunction)],
+    });
 
     new cdk.CfnOutput(this, "VectorDbBucketName", {
       description: "S3 bucket where LanceDB sources embeddings",
