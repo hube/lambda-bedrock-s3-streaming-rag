@@ -41,7 +41,10 @@ async function downloadFromS3(bucket: string, key: string): Promise<string> {
   return tmpPath;
 }
 
-async function ingest(chunks: string[], sourceS3ObjectKey: string): Promise<number> {
+async function ingest(
+  chunks: string[],
+  sourceS3ObjectKey: string,
+): Promise<number> {
   console.log(`Ingesting ${chunks.length} from ${sourceS3ObjectKey} into a DB`);
 
   const embeddings = new BedrockEmbeddings({ region: REGION });
@@ -50,7 +53,11 @@ async function ingest(chunks: string[], sourceS3ObjectKey: string): Promise<numb
   const vectors = await embeddings.embedDocuments(chunks);
   console.log(`Created vectors ${vectors}`);
 
-  const records = chunks.map((text, i) => ({ vector: vectors[i], text, sourceS3ObjectKey }));
+  const records = chunks.map((text, i) => ({
+    vector: vectors[i],
+    text,
+    sourceS3ObjectKey,
+  }));
   console.log(`Created ${records.length} records`);
 
   const db = await lancedb.connect(`s3://${BUCKET_NAME}/`);
