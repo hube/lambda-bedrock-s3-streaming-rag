@@ -24,8 +24,6 @@
     "@langchain/core": "^1.1.42",
     "@tsconfig/recommended": "^1.0.13",
     "@types/node": "25.x",
-    "@typescript-eslint/eslint-plugin": "^8.59.1",
-    "@typescript-eslint/parser": "^8.59.1",
     "esbuild": "^0.25.0",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",

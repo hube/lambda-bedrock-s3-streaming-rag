@@ -20,8 +20,6 @@
     "@eslint/js": "^10.0.1",
     "@tsconfig/recommended": "^1.0.13",
     "@types/node": "20.x",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
     "aws-cdk": "2.x",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^9.1.0",
