@@ -34,7 +34,23 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
 
     const functionDir = path.join(__dirname, "../../data-pipeline");
 
-    // Lambda function for processing documents
+    // Lambda function for processing documents.
+    // Build flow: yarn build runs esbuild, which bundles all pure-JS deps
+    // into dist/index.js. Only @lancedb/lancedb (native binaries) and its
+    // apache-arrow peer dep are installed into the asset's node_modules;
+    // @aws-sdk/* is provided by the Node 24 Lambda runtime. The musl variant
+    // of lancedb is removed since the Lambda runtime is Amazon Linux (glibc).
+    const buildCommands = (outputDir: string) =>
+      [
+        "yarn install",
+        "yarn build",
+        `cp dist/index.js "${outputDir}"`,
+        `cp package.json "${outputDir}"`,
+        `cd "${outputDir}"`,
+        "yarn install --prod",
+        "rm -rf node_modules/@lancedb/lancedb-linux-arm64-musl",
+      ].join(" && ");
+
     this.lambdaFunction = new lambda.Function(
       this,
       "DocumentVectorizationFunction",
@@ -47,21 +63,14 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
               tryBundle(outputDir: string): boolean {
                 const result = spawnSync(
                   "bash",
-                  [
-                    "-c",
-                    `cd "${functionDir}" && yarn install && yarn build && cp -r dist/. "${outputDir}" && cp package.json "${outputDir}" && cd "${outputDir}" && yarn install --prod`,
-                  ],
+                  ["-c", `cd "${functionDir}" && ${buildCommands(outputDir)}`],
                   { stdio: "inherit" },
                 );
                 return result.status === 0;
               },
             },
             image: lambda.Runtime.NODEJS_24_X.bundlingImage,
-            command: [
-              "bash",
-              "-c",
-              "yarn install && yarn build && cp -r dist/. /asset-output/ && cp package.json /asset-output/ && cd /asset-output && yarn install --prod",
-            ],
+            command: ["bash", "-c", buildCommands("/asset-output")],
           },
         }),
         timeout: cdk.Duration.seconds(300),
