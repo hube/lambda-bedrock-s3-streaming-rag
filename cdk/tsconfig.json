@@ -1,12 +1,9 @@
 {
   "compilerOptions": {
-    "target": "esnext",
     "composite": true,
-    "strict": true,
     "outDir": "./dist",
-    "rootDir": "./"
+    "types": ["node"]
   },
   "include": ["bin/*", "lib/*"],
-  "exclude": ["node_modules", "dist"],
-  "extends": "@tsconfig/recommended/tsconfig.json"
+  "extends": "@tsconfig/node22/tsconfig.json"
 }
