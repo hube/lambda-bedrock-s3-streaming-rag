@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import { StreamingRagStack } from "../lib/streaming-rag-stack";
 import { DocumentIngestionPipelineStack } from "../lib/document-ingestion-pipeline-stack";
