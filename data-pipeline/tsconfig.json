@@ -5,5 +5,5 @@
     "rootDir": "./"
   },
   "include": ["index.ts"],
-  "extends": "@tsconfig/recommended/tsconfig.json"
+  "extends": "@tsconfig/node22/tsconfig.json"
 }

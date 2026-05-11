@@ -5,5 +5,5 @@ import tseslint from 'typescript-eslint';
 export default defineConfig(
   eslint.configs.recommended,
   tseslint.configs.recommended,
-  globalIgnores(["dist"])
+  globalIgnores(["dist", ".pnp.*", ".yarn/**"])
 );
