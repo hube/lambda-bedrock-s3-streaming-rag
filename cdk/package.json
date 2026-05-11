@@ -19,7 +19,6 @@
     "@tsconfig/node22": "^22.0.5",
     "@types/node": "25.x",
     "aws-cdk": "2.x",
-    "esbuild": "0.28.0",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3",
