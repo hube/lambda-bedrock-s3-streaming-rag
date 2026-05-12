@@ -34,28 +34,52 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
 
     const functionDir = path.join(__dirname, "../../data-pipeline");
 
-    // Lambda function for processing documents.
-    // Build flow: yarn build runs esbuild, which bundles all pure-JS deps
-    // into dist/index.js. Only @lancedb/lancedb (native binaries) and its
-    // apache-arrow peer dep are installed into the asset's node_modules;
-    // @aws-sdk/* is provided by the Node 24 Lambda runtime. The musl variant
-    // of lancedb is removed since the Lambda runtime is Amazon Linux (glibc).
     const buildCommands = (outputDir: string) =>
       [
-        "yarn install",
+        "yarn install --immutable --immutable-cache",
         "yarn build",
-        `cp dist/index.js "${outputDir}"`,
-        `cp package.json "${outputDir}"`,
+        `cp dist/index.mjs "${outputDir}"`,
+        `yarn node scripts/build-deploy-package.mjs "${outputDir}"`,
         `cd "${outputDir}"`,
-        "yarn install --prod",
-        "rm -rf node_modules/@lancedb/lancedb-linux-arm64-musl",
+        "yarn install",
       ].join(" && ");
+
+    // @napi-rs/canvas (a transitive dep of pdf-parse) provides DOMMatrix,
+    // which pdfjs-dist requires at runtime. The native binaries ship via a
+    // public Lambda layer published by https://github.com/ShivamJoker/Canvas-Lambda-Layer.
+    // Versions differ per region; deploys to a region not in this map will
+    // fail at CloudFormation deploy time.
+    const napiRsCanvasLayerVersionByRegion = new cdk.CfnMapping(
+      this,
+      "NapiRsCanvasLayerVersionByRegion",
+      {
+        mapping: {
+          "us-east-1": { version: "888" },
+          "us-west-2": { version: "886" },
+          "eu-west-1": { version: "885" },
+          "eu-central-1": { version: "885" },
+          "ap-northeast-1": { version: "886" },
+          "ap-southeast-1": { version: "886" },
+          "ap-southeast-2": { version: "885" },
+          "sa-east-1": { version: "886" },
+        },
+      },
+    );
+    const napiRsCanvasLayerVersion = napiRsCanvasLayerVersionByRegion.findInMap(
+      this.region,
+      "version",
+    );
+    const napiRsCanvasLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      "NapiRsCanvasLayer",
+      `arn:aws:lambda:${this.region}:205979422636:layer:napi-rs-canvas:${napiRsCanvasLayerVersion}`,
+    );
 
     this.lambdaFunction = new lambda.Function(
       this,
       "DocumentVectorizationFunction",
       {
-        runtime: lambda.Runtime.NODEJS_24_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: "index.handler",
         code: lambda.Code.fromAsset(functionDir, {
           bundling: {
@@ -69,13 +93,14 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
                 return result.status === 0;
               },
             },
-            image: lambda.Runtime.NODEJS_24_X.bundlingImage,
+            image: lambda.Runtime.NODEJS_22_X.bundlingImage,
             command: ["bash", "-c", buildCommands("/asset-output")],
           },
         }),
-        timeout: cdk.Duration.seconds(300),
+        layers: [napiRsCanvasLayer],
+        timeout: cdk.Duration.minutes(15),
         memorySize: 512,
-        architecture: lambda.Architecture.ARM_64,
+        architecture: lambda.Architecture.X86_64,
         environment: {
           s3BucketName: this.vectorDbBucket.bucketName,
           region: this.region,

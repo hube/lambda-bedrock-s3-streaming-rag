@@ -4,13 +4,10 @@ import * as lancedb from "@lancedb/lancedb";
 import { createWriteStream, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+import { CanvasFactory } from "pdf-parse/worker";
+import { PDFParse } from "pdf-parse";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (
-  buffer: Buffer,
-) => Promise<{ text: string }>;
 
 const BUCKET_NAME = process.env.s3BucketName!;
 const REGION = process.env.region ?? "us-east-1";
@@ -47,11 +44,25 @@ async function ingest(
 ): Promise<number> {
   console.log(`Ingesting ${chunks.length} from ${sourceS3ObjectKey} into a DB`);
 
-  const embeddings = new BedrockEmbeddings({ region: REGION });
+  const embeddings = new BedrockEmbeddings({
+    region: REGION,
+    maxRetries: 3,
+    clientOptions: {
+      region: REGION,
+      // Adaptive retries gracefully handles throttling from the server side
+      retryMode: "adaptive",
+      maxAttempts: 10,
+    },
+  });
   console.log(`Created BedrockEmbeddings ${embeddings}`);
 
-  const vectors = await embeddings.embedDocuments(chunks);
-  console.log(`Created vectors ${vectors}`);
+  const vectors: number[][] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    vectors.push(await embeddings.embedQuery(chunks[i]));
+    if ((i + 1) % 25 === 0 || i + 1 === chunks.length) {
+      console.log(`Embedded ${i + 1}/${chunks.length} chunks`);
+    }
+  }
 
   const records = chunks.map((text, i) => ({
     vector: vectors[i],
@@ -111,7 +122,10 @@ export const handler = async (
   console.log(`Downloading s3://${bucket}/${key}`);
   const tmpPath = await downloadFromS3(bucket, key);
 
-  const pdfData = await pdfParse(readFileSync(tmpPath));
+  const pdfData = await new PDFParse({
+    data: readFileSync(tmpPath),
+    CanvasFactory,
+  }).getText();
   const chunks = splitText(pdfData.text);
   console.log(`Extracted ${chunks.length} chunks from ${key}`);
 
