@@ -40,7 +40,7 @@ export class StreamingRagStack extends cdk.Stack {
                 "bash",
                 [
                   "-c",
-                  `cp -r ${functionDir}/. "${outputDir}" && cd "${outputDir}" && npm install --omit=dev`,
+                  `cp -r ${functionDir}/. "${outputDir}" && cd "${outputDir}" && corepack yarn install --immutable && corepack yarn build && corepack yarn workspaces focus --production && rm -rf src tsconfig.json .yarn .yarnrc.yml yarn.lock`,
                 ],
                 { stdio: "inherit" },
               );
@@ -52,7 +52,7 @@ export class StreamingRagStack extends cdk.Stack {
           command: [
             "bash",
             "-c",
-            "cp -r . /asset-output/ && cd /asset-output && npm install --omit=dev",
+            "cp -r . /asset-output/ && cd /asset-output && corepack yarn install --immutable && corepack yarn build && corepack yarn workspaces focus --production && rm -rf src tsconfig.json .yarn .yarnrc.yml yarn.lock",
           ],
         },
       }),

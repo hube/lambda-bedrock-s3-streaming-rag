@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "extends": "@tsconfig/node22/tsconfig.json"
+}
