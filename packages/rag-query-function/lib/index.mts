@@ -7,6 +7,8 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import type { LambdaFunctionURLEvent } from "aws-lambda";
 
 interface RunChainInput {
+  userId: string;
+  documentGroupId: string;
   query: string;
   model?: string;
   streamingFormat?: string;
@@ -17,17 +19,21 @@ const lanceDbTable = process.env.lanceDbTable!;
 const awsRegion = process.env.region;
 
 const runChain = async (
-  { query, model, streamingFormat }: RunChainInput,
+  { userId, documentGroupId, query, model, streamingFormat }: RunChainInput,
   responseStream: awslambda.ResponseStream,
 ): Promise<void> => {
-  const lanceDbS3Uri = `s3://${lanceDbSrc}/`;
-
-  console.log("lanceDbS3Uri", lanceDbS3Uri);
+  console.log("lanceDbSrc", lanceDbSrc);
   console.log("lanceDbTable", lanceDbTable);
   console.log("awsRegion", awsRegion);
+
+  console.log("userId", userId);
+  console.log("documentGroupId", documentGroupId);
   console.log("query", query);
   console.log("model", model);
   console.log("streamingFormat", streamingFormat);
+
+  const lanceDbS3Uri = `s3://${lanceDbSrc}/${userId}/${documentGroupId}`;
+  console.log("lanceDbS3Uri", lanceDbS3Uri);
 
   const db = await lancedb.connect(lanceDbS3Uri);
   const table = await db.openTable(lanceDbTable);
