@@ -33,7 +33,7 @@ export class StreamingRagStack extends cdk.Stack {
         "yarn install --immutable --immutable-cache",
         `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
-        "yarn install",
+        "yarn workspaces focus --production",
       ].join(" && ");
 
     // Lambda function using the AWS-provided nodejs24.x runtime
