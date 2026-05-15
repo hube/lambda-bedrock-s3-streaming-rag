@@ -71,7 +71,10 @@ async function ingest(
   }));
   console.log(`Created ${records.length} records`);
 
-  const db = await lancedb.connect(`s3://${BUCKET_NAME}/`);
+  const [userId, documentGroupId] = sourceS3ObjectKey.split("/")
+  console.log(`userId=${userId} and documentGroupId=${documentGroupId}`);
+
+  const db = await lancedb.connect(`s3://${BUCKET_NAME}/${userId}/${documentGroupId}/`);
   console.log(`Connected to DB in ${BUCKET_NAME}`);
 
   const tableNames = await db.tableNames();
