@@ -101,21 +101,3 @@ export const handler = awslambda.streamifyResponse<
   await runChain(body, responseStream);
   console.log(JSON.stringify({ status: "complete" }));
 });
-
-/*
-Sample event 1:
-{
-    "query": "What models are available in Amazon Bedrock?",
-}
-Sample event 2:
-{
-    "query": "What models are available in Amazon Bedrock?",
-    "model": "us.anthropic.claude-sonnet-4-6"
-}
-Sample event 3:
-{
-    "query": "What models are available in Amazon Bedrock?",
-    "model": "us.anthropic.claude-sonnet-4-6",
-    "streamingFormat": "fetch-event-source"
-}
-*/
