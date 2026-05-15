@@ -5,5 +5,5 @@
     "types": ["node"]
   },
   "include": ["bin/*", "lib/*"],
-  "extends": "@tsconfig/node22/tsconfig.json"
+  "extends": "@tsconfig/node24/tsconfig.json"
 }
