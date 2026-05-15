@@ -40,16 +40,20 @@ const runChain = async (
 
   const embeddings = new BedrockEmbeddings({ region: awsRegion });
   const queryEmbedding = await embeddings.embedQuery(query);
+
   const results = await table
     .query()
     .nearestTo(queryEmbedding)
     .limit(4)
     .toArray();
+  console.log("retrieved results", results.length);
+  // console.log("results: %o", results);
+
   const context = results
     .map((r: { text?: string }) => r.text)
     .filter(Boolean)
     .join("\n\n");
-  console.log("retrieved chunks", results.length);
+  console.log("context: %o", context);
 
   const prompt = PromptTemplate.fromTemplate(
     `Answer the following question based only on the following context:
