@@ -7,6 +7,7 @@ export default defineConfig(
   eslint.configs.recommended,
   tseslint.configs.recommended,
   {
+    files: ["**/*.js", "**/*.cjs", "**/*.mjs", "**/*.ts", "**/*.mts"],
     languageOptions: { globals: globals.node },
     rules: {
       "@typescript-eslint/no-unused-vars": [

@@ -1,12 +1,11 @@
 {
   "compilerOptions": {
     "composite": true,
-    "outDir": "./dist",
-    "rootDir": "./"
+    "outDir": "dist"
   },
-  "include": ["index.ts"],
+  "include": ["lib/**/*"],
   "extends": [
-    "@tsconfig/node22/tsconfig.json",
+    "@tsconfig/node24/tsconfig.json",
     "@tsconfig/node-ts/tsconfig.json"
   ]
 }
