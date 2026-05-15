@@ -7,7 +7,7 @@ export default defineConfig(
   eslint.configs.recommended,
   tseslint.configs.recommended,
   {
-    files: ["**/*.js", "**/*.cjs", "**/*.mjs", "**/*.ts"],
+    files: ["**/*.js", "**/*.cjs", "**/*.mjs", "**/*.mts"],
     languageOptions: { globals: globals.node },
   },
   globalIgnores(["dist", ".pnp.*", ".yarn/**"]),
