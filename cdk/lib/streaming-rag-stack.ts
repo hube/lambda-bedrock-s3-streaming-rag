@@ -26,7 +26,15 @@ export class StreamingRagStack extends cdk.Stack {
     const authType =
       props.functionUrlAuthType ?? lambda.FunctionUrlAuthType.AWS_IAM;
 
-    const functionDir = path.join(__dirname, "../../function");
+    const functionDir = path.join(__dirname, "../../rag-query-function");
+
+    const buildCommands = (outputDir: string) =>
+      [
+        "yarn install --immutable --immutable-cache",
+        `yarn build "${outputDir}"`,
+        `cd "${outputDir}"`,
+        "yarn install",
+      ].join(" && ");
 
     // Lambda function using the AWS-provided nodejs24.x runtime
     this.lambdaFunction = new lambda.Function(this, "StreamingRAGFunction", {
@@ -38,10 +46,7 @@ export class StreamingRagStack extends cdk.Stack {
             tryBundle(outputDir: string): boolean {
               const result = spawnSync(
                 "bash",
-                [
-                  "-c",
-                  `cp -r ${functionDir}/. "${outputDir}" && cd "${outputDir}" && corepack yarn install --immutable && corepack yarn build && corepack yarn workspaces focus --production && rm -rf src tsconfig.json .yarn .yarnrc.yml yarn.lock`,
-                ],
+                ["-c", `cd "${functionDir}" && ${buildCommands(outputDir)}`],
                 { stdio: "inherit" },
               );
               return result.status === 0;
@@ -49,11 +54,7 @@ export class StreamingRagStack extends cdk.Stack {
           },
           // Docker fallback (used in CI environments without local Node)
           image: lambda.Runtime.NODEJS_24_X.bundlingImage,
-          command: [
-            "bash",
-            "-c",
-            "cp -r . /asset-output/ && cd /asset-output && corepack yarn install --immutable && corepack yarn build && corepack yarn workspaces focus --production && rm -rf src tsconfig.json .yarn .yarnrc.yml yarn.lock",
-          ],
+          command: ["bash", "-c", buildCommands("/asset-output")],
         },
       }),
       timeout: cdk.Duration.seconds(300),

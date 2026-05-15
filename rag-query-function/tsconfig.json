@@ -3,6 +3,9 @@
     "composite": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*"],
-  "extends": "@tsconfig/node22/tsconfig.json"
+  "include": ["src/lambda/**/*"],
+  "extends": [
+    "@tsconfig/node24/tsconfig.json",
+    "@tsconfig/node-ts/tsconfig.json"
+  ]
 }
