@@ -37,11 +37,9 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
     const buildCommands = (outputDir: string) =>
       [
         "yarn install --immutable --immutable-cache",
-        "yarn build",
-        `cp dist/index.mjs "${outputDir}"`,
-        `yarn node scripts/build-deploy-package.mjs "${outputDir}"`,
+        `yarn build ${outputDir}`,
         `cd "${outputDir}"`,
-        "yarn install",
+        "yarn workspaces focus --production",
       ].join(" && ");
 
     // @napi-rs/canvas (a transitive dep of pdf-parse) provides DOMMatrix,
