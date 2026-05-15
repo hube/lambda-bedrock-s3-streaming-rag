@@ -65,6 +65,7 @@ export class StreamingRagStack extends cdk.Stack {
         region: this.region,
         lanceDbTable: "vectorstore",
       },
+      tracing: lambda.Tracing.ACTIVE,
     });
 
     // Bedrock permissions

@@ -104,6 +104,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           region: this.region,
           lanceDbTable: "vectorstore",
         },
+        tracing: lambda.Tracing.ACTIVE,
       },
     );
 
