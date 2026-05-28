@@ -1,0 +1,6 @@
+{
+  "id": "aws-cdk",
+  "name": "AWS CDK",
+  "version": "1.0.0",
+  "installsAfter": ["ghcr.io/devcontainers/features/node"]
+}

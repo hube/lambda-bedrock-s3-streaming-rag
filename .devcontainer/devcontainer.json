@@ -1,0 +1,10 @@
+{
+  "image": "ghcr.io/hube/devcontainer:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/node:2": {
+      "npmVersion": "latest"
+    },
+    "./local-features/aws-cdk": {}
+  }
+}
