@@ -42,12 +42,18 @@ consumes
 
 - `version` (string) — message-schema version. Set to `"1"` for this initial
   contract. If we ever change the `detail` shape, we will bump this.
-- `documentUuid` (string) — the lookup key.
+- `documentUuid` (string | null) — the lookup key. A non-null string when
+  `status="PROCESSING_COMPLETED"`. **May be `null`** when
+  `status="PROCESSING_FAILED"` and the S3 key could not be parsed (no UUID); in
+  that case `statusDetail` explains why.
 - `status` (string) - the only valid values are `"PROCESSING_COMPLETED"` and
   `"PROCESSING_FAILED"`
-- `userId` (string) - identifies the user the document belongs to
-- `documentGroupId` (string) - identifies the document group the document
-  belongs to
+- `userId` (string | null) - identifies the user the document belongs to.
+  Non-null for `PROCESSING_COMPLETED`; **may be `null`** for `PROCESSING_FAILED`
+  when the S3 key could not be parsed.
+- `documentGroupId` (string | null) - identifies the document group the document
+  belongs to. Non-null for `PROCESSING_COMPLETED`; **may be `null`** for
+  `PROCESSING_FAILED` when the S3 key could not be parsed.
 - `s3Key` (string) — the full S3 key to the document. Should be of the form:
   `<userId>/<documentGroupId>/<documentFilename>-<documentUuid>.pdf`
 - `statusDetail` (string | null) — **optional, nullable in the JSON**. When

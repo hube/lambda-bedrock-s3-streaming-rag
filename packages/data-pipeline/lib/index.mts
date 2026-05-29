@@ -38,9 +38,10 @@ interface ParsedKey {
 }
 
 // Derive the business identifiers from the S3 key, which follows the convention
-// <userId>/<documentGroupId>/<filename>-<uuid>.pdf. Fails fast on a key that
-// does not carry a UUID so the caller can report a PROCESSING_FAILED event
-// rather than emitting a null identifier.
+// <userId>/<documentGroupId>/<filename>-<uuid>.pdf. Parsing can always fail, so
+// this throws on a key that does not carry a trailing UUID; the caller surfaces
+// that as a PROCESSING_FAILED event (with null identifiers) rather than letting
+// a malformed key pass downstream.
 function parseKey(key: string): ParsedKey {
   const [userId, documentGroupId] = key.split("/");
   const match = key.match(UUID_RE);
@@ -51,9 +52,11 @@ function parseKey(key: string): ParsedKey {
 }
 
 interface DocumentProcessedDetail {
+  // Identifiers are non-null for PROCESSING_COMPLETED but may be null for
+  // PROCESSING_FAILED when the S3 key could not be parsed (see schema doc).
   documentUuid: string | null;
-  userId?: string;
-  documentGroupId?: string;
+  userId: string | null;
+  documentGroupId: string | null;
   bucket: string;
   key: string;
   status: "PROCESSING_COMPLETED" | "PROCESSING_FAILED";
@@ -121,6 +124,34 @@ async function downloadFromS3(bucket: string, key: string): Promise<string> {
   );
   await pipeline(response.Body as Readable, createWriteStream(tmpPath));
   return tmpPath;
+}
+
+// Idempotency guard: returns true if this exact S3 key has already been
+// ingested into the tenant's LanceDB table. EventBridge S3 delivery is
+// at-least-once, so a redelivered event must not re-embed/re-append or publish a
+// second DocumentProcessed event. Detection is non-atomic (two simultaneous
+// duplicates could both pass), which is acceptable for ordinary redelivery.
+async function alreadyProcessed(
+  userId: string,
+  documentGroupId: string,
+  key: string,
+): Promise<boolean> {
+  const db = await lancedb.connect(
+    `s3://${BUCKET_NAME}/${userId}/${documentGroupId}/`,
+  );
+  const tableNames = await db.tableNames();
+  if (!tableNames.includes(TABLE_NAME)) {
+    return false;
+  }
+  const table = await db.openTable(TABLE_NAME);
+  // Escape single quotes for the SQL filter expression.
+  const escapedKey = key.replace(/'/g, "''");
+  const existing = await table
+    .query()
+    .where(`sourceS3ObjectKey = '${escapedKey}'`)
+    .limit(1)
+    .toArray();
+  return existing.length > 0;
 }
 
 async function ingest(
@@ -211,13 +242,22 @@ export const handler = async (
     return { statusCode: 200, body: "No documents ingested." };
   }
 
-  // Parsed below inside the try so the catch can still report whatever is known.
-  let userId: string | undefined;
-  let documentGroupId: string | undefined;
+  // Identifiers are parsed inside the try (parseKey throws on a malformed key).
+  // They start null so a PROCESSING_FAILED event for an unparseable key carries
+  // explicit nulls (per the contract) rather than omitting the fields.
+  let userId: string | null = null;
+  let documentGroupId: string | null = null;
   let documentUuid: string | null = null;
-
+  let count: number;
   try {
     ({ userId, documentGroupId, documentUuid } = parseKey(key));
+
+    // Idempotency: a redelivered event for an already-ingested key does no work
+    // and publishes no event.
+    if (await alreadyProcessed(userId, documentGroupId, key)) {
+      console.log(`Duplicate event for ${key}; already ingested, skipping.`);
+      return { statusCode: 200, body: "Duplicate event; already processed." };
+    }
 
     console.log(`Downloading s3://${bucket}/${key}`);
     const tmpPath = await downloadFromS3(bucket, key);
@@ -229,21 +269,7 @@ export const handler = async (
     const chunks = splitText(pdfData.text);
     console.log(`Extracted ${chunks.length} chunks from ${key}`);
 
-    const count = await ingest(chunks, key);
-    const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${BUCKET_NAME}/ table=${TABLE_NAME}`;
-    console.log(msg);
-
-    await publishDocumentProcessed({
-      documentUuid,
-      userId,
-      documentGroupId,
-      bucket,
-      key,
-      status: "PROCESSING_COMPLETED",
-      statusDetail: null,
-    });
-
-    return { statusCode: 200, body: msg };
+    count = await ingest(chunks, key);
   } catch (err) {
     const statusDetail = err instanceof Error ? err.message : String(err);
     console.error(
@@ -267,4 +293,23 @@ export const handler = async (
       body: `Failed to ingest s3://${bucket}/${key}: ${statusDetail}`,
     };
   }
+
+  // Processing succeeded. Publish the success event *outside* the try so a
+  // transient PutEvents failure cannot be misreported as PROCESSING_FAILED. If
+  // the publish throws here it propagates and EventBridge retries the whole
+  // invocation (see the idempotency note in the README/handler docs).
+  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${BUCKET_NAME}/ table=${TABLE_NAME}`;
+  console.log(msg);
+
+  await publishDocumentProcessed({
+    documentUuid,
+    userId,
+    documentGroupId,
+    bucket,
+    key,
+    status: "PROCESSING_COMPLETED",
+    statusDetail: null,
+  });
+
+  return { statusCode: 200, body: msg };
 };

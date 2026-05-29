@@ -9,13 +9,25 @@ import { spawnSync } from "child_process";
 import { Construct } from "constructs";
 import * as path from "path";
 
+export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
+  /**
+   * Queue (in `DocumentWorkerStack`) that `DocumentProcessed` events are routed
+   * to. This stack owns the EventBridge rule that targets it.
+   */
+  documentProcessedQueue: sqs.IQueue;
+}
+
 export class DocumentIngestionPipelineStack extends cdk.Stack {
   public readonly unprocessedDocumentsBucket: s3.Bucket;
   public readonly vectorDbBucket: s3.Bucket;
   public readonly lambdaFunction: lambda.Function;
   public readonly eventBus: events.IEventBus;
 
-  constructor(scope: Construct, id: string, props: cdk.StackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: DocumentIngestionPipelineStackProps,
+  ) {
     super(scope, id, props);
 
     // S3 bucket for unprocessed document uploads
@@ -151,17 +163,25 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       targets: [new events_targets.LambdaFunction(this.lambdaFunction)],
     });
 
-    // SQS subscriber for the outbound DocumentProcessed events, with a DLQ for
-    // messages that a downstream worker repeatedly fails to process.
-    const documentProcessedDlq = new sqs.Queue(this, "DocumentProcessedDlq", {
-      retentionPeriod: cdk.Duration.days(14),
-    });
-    const documentProcessedQueue = new sqs.Queue(
+    // Route DocumentProcessed events off the default bus to the consumer queue
+    // (in DocumentWorkerStack). A dedicated delivery DLQ captures events
+    // EventBridge cannot deliver to the target (distinct from the queue's own
+    // consumer DLQ).
+    const documentProcessedDeliveryDlq = new sqs.Queue(
       this,
-      "DocumentProcessedQueue",
+      "DocumentProcessedDeliveryDlq",
       {
-        deadLetterQueue: { queue: documentProcessedDlq, maxReceiveCount: 3 },
+        retentionPeriod: cdk.Duration.days(14),
       },
+    );
+    // Import the worker queue by ARN: as an imported (unowned) resource, the
+    // target will not auto-add a rule-scoped SendMessage policy on it, which
+    // would otherwise create a cross-stack dependency cycle. DocumentWorkerStack
+    // grants EventBridge send access itself.
+    const workerQueue = sqs.Queue.fromQueueArn(
+      this,
+      "DocumentProcessedQueueRef",
+      props.documentProcessedQueue.queueArn,
     );
     new events.Rule(this, "DocumentProcessedRule", {
       eventBus: this.eventBus,
@@ -169,7 +189,11 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         source: ["documentworker.rag"],
         detailType: ["DocumentProcessed"],
       },
-      targets: [new events_targets.SqsQueue(documentProcessedQueue)],
+      targets: [
+        new events_targets.SqsQueue(workerQueue, {
+          deadLetterQueue: documentProcessedDeliveryDlq,
+        }),
+      ],
     });
 
     new cdk.CfnOutput(this, "VectorDbBucketName", {
