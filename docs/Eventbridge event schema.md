@@ -5,7 +5,7 @@ consumes
 
 ```json
 {
-  "version": "1",
+  "version": "0",
   "id": "a8e2c1f0-7d3b-4f9a-b1c2-3e4f5a6b7c8d",
   "detail-type": "DocumentProcessed",
   "source": "documentworker.rag",
@@ -14,6 +14,7 @@ consumes
   "region": "eu-central-1",
   "resources": ["arn:aws:s3:::<bucket>/42/7/2025-tax-return-<uuid>.pdf"],
   "detail": {
+    "version": "1",
     "documentUuid": "2b1ae9c0-1234-4567-89ab-cdef01234567",
     "userId": "42",
     "documentGroupId": "7",
@@ -27,8 +28,10 @@ consumes
 
 **Envelope fields:**
 
-- `version` — message-schema version. Set to `"1"` for this initial contract. If
-  we ever change the `detail` shape, we will bump this
+- `version` — the EventBridge envelope version. Always `"0"` for custom
+  `PutEvents` events; EventBridge sets it and it is not settable by the
+  publisher. **Not** the message-schema version — consumers should not rely on
+  it for schema versioning (see `detail.version` below).
 - `id` — globally unique per-event identifier (a UUID). **Not** a business
   identifier — `detail.documentUuid` is the lookup key.
 - `detail-type` — the discriminator for what kind of event this is. The only
@@ -37,6 +40,8 @@ consumes
 
 **Required `detail` fields:**
 
+- `version` (string) — message-schema version. Set to `"1"` for this initial
+  contract. If we ever change the `detail` shape, we will bump this.
 - `documentUuid` (string) — the lookup key.
 - `status` (string) - the only valid values are `"PROCESSING_COMPLETED"` and
   `"PROCESSING_FAILED"`

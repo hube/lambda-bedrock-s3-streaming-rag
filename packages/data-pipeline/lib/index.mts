@@ -1,4 +1,8 @@
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  EventBridgeClient,
+  PutEventsCommand,
+} from "@aws-sdk/client-eventbridge";
 import { BedrockEmbeddings } from "@langchain/aws";
 import * as lancedb from "@lancedb/lancedb";
 import { createWriteStream, readFileSync } from "fs";
@@ -15,7 +19,88 @@ const TABLE_NAME = process.env.lanceDbTable ?? "vectorstore";
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 
+// Contract-fixed values for the outbound DocumentProcessed event
+// (see docs/Eventbridge event schema.md).
+const EVENT_BUS_NAME = process.env.eventBusName ?? "default";
+const EVENT_SOURCE = "documentworker.rag";
+const DETAIL_TYPE = "DocumentProcessed";
+
 const s3 = new S3Client({ region: REGION });
+const eventBridge = new EventBridgeClient({ region: REGION });
+
+const UUID_RE =
+  /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.pdf$/i;
+
+interface ParsedKey {
+  userId: string;
+  documentGroupId: string;
+  documentUuid: string;
+}
+
+// Derive the business identifiers from the S3 key, which follows the convention
+// <userId>/<documentGroupId>/<filename>-<uuid>.pdf. Fails fast on a key that
+// does not carry a UUID so the caller can report a PROCESSING_FAILED event
+// rather than emitting a null identifier.
+function parseKey(key: string): ParsedKey {
+  const [userId, documentGroupId] = key.split("/");
+  const match = key.match(UUID_RE);
+  if (!match) {
+    throw new Error(`Could not parse a document UUID from S3 key: ${key}`);
+  }
+  return { userId, documentGroupId, documentUuid: match[1] };
+}
+
+interface DocumentProcessedDetail {
+  documentUuid: string | null;
+  userId?: string;
+  documentGroupId?: string;
+  bucket: string;
+  key: string;
+  status: "PROCESSING_COMPLETED" | "PROCESSING_FAILED";
+  statusDetail: string | null;
+}
+
+// Emit exactly one DocumentProcessed event to EventBridge. The schema version
+// we control lives inside `detail`; the envelope `version` is set by
+// EventBridge itself (always "0" for custom PutEvents) and is not settable here.
+async function publishDocumentProcessed({
+  documentUuid,
+  userId,
+  documentGroupId,
+  bucket,
+  key,
+  status,
+  statusDetail,
+}: DocumentProcessedDetail): Promise<void> {
+  const result = await eventBridge.send(
+    new PutEventsCommand({
+      Entries: [
+        {
+          EventBusName: EVENT_BUS_NAME,
+          Source: EVENT_SOURCE,
+          DetailType: DETAIL_TYPE,
+          Resources: [`arn:aws:s3:::${bucket}/${key}`],
+          Detail: JSON.stringify({
+            version: "1",
+            documentUuid,
+            userId,
+            documentGroupId,
+            s3Key: key,
+            status,
+            statusDetail,
+            processedAt: new Date().toISOString(),
+          }),
+        },
+      ],
+    }),
+  );
+  if (result.FailedEntryCount && result.FailedEntryCount > 0) {
+    throw new Error(
+      `PutEvents failed for ${key}: ${JSON.stringify(result.Entries)}`,
+    );
+  }
+  console.log(`Published DocumentProcessed (${status}) for ${key}`);
+}
 
 function splitText(text: string): string[] {
   const chunks: string[] = [];
@@ -119,24 +204,67 @@ export const handler = async (
   const bucket = event.detail.bucket.name;
   const key = decodeURIComponent(event.detail.object.key.replace(/\+/g, " "));
 
+  // A non-PDF upload is not a document and carries no documentUuid, so we skip
+  // it silently without emitting an event.
   if (!key.toLowerCase().endsWith(".pdf")) {
     console.log(`Skipping non-PDF key: ${key}`);
     return { statusCode: 200, body: "No documents ingested." };
   }
 
-  console.log(`Downloading s3://${bucket}/${key}`);
-  const tmpPath = await downloadFromS3(bucket, key);
+  // Parsed below inside the try so the catch can still report whatever is known.
+  let userId: string | undefined;
+  let documentGroupId: string | undefined;
+  let documentUuid: string | null = null;
 
-  const pdfData = await new PDFParse({
-    data: readFileSync(tmpPath),
-    CanvasFactory,
-  }).getText();
-  const chunks = splitText(pdfData.text);
-  console.log(`Extracted ${chunks.length} chunks from ${key}`);
+  try {
+    ({ userId, documentGroupId, documentUuid } = parseKey(key));
 
-  const count = await ingest(chunks, key);
-  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${BUCKET_NAME}/ table=${TABLE_NAME}`;
-  console.log(msg);
+    console.log(`Downloading s3://${bucket}/${key}`);
+    const tmpPath = await downloadFromS3(bucket, key);
 
-  return { statusCode: 200, body: msg };
+    const pdfData = await new PDFParse({
+      data: readFileSync(tmpPath),
+      CanvasFactory,
+    }).getText();
+    const chunks = splitText(pdfData.text);
+    console.log(`Extracted ${chunks.length} chunks from ${key}`);
+
+    const count = await ingest(chunks, key);
+    const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${BUCKET_NAME}/ table=${TABLE_NAME}`;
+    console.log(msg);
+
+    await publishDocumentProcessed({
+      documentUuid,
+      userId,
+      documentGroupId,
+      bucket,
+      key,
+      status: "PROCESSING_COMPLETED",
+      statusDetail: null,
+    });
+
+    return { statusCode: 200, body: msg };
+  } catch (err) {
+    const statusDetail = err instanceof Error ? err.message : String(err);
+    console.error(
+      `Processing failed for s3://${bucket}/${key}: ${statusDetail}`,
+    );
+
+    // Report the failure as a single event and return normally — rethrowing
+    // would trigger an EventBridge retry and a duplicate event.
+    await publishDocumentProcessed({
+      documentUuid,
+      userId,
+      documentGroupId,
+      bucket,
+      key,
+      status: "PROCESSING_FAILED",
+      statusDetail,
+    });
+
+    return {
+      statusCode: 500,
+      body: `Failed to ingest s3://${bucket}/${key}: ${statusDetail}`,
+    };
+  }
 };

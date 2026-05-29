@@ -4,6 +4,7 @@ import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { spawnSync } from "child_process";
 import { Construct } from "constructs";
 import * as path from "path";
@@ -103,6 +104,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           s3BucketName: this.vectorDbBucket.bucketName,
           region: this.region,
           lanceDbTable: "vectorstore",
+          eventBusName: "default",
         },
         tracing: lambda.Tracing.ACTIVE,
       },
@@ -121,6 +123,17 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       }),
     );
 
+    // Allow the Lambda to publish DocumentProcessed events to the default bus.
+    this.lambdaFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["events:PutEvents"],
+        resources: [
+          `arn:aws:events:${this.region}:${this.account}:event-bus/default`,
+        ],
+      }),
+    );
+
     this.eventBus = events.EventBus.fromEventBusName(
       this,
       "DefaultEventBus",
@@ -136,6 +149,27 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         },
       },
       targets: [new events_targets.LambdaFunction(this.lambdaFunction)],
+    });
+
+    // SQS subscriber for the outbound DocumentProcessed events, with a DLQ for
+    // messages that a downstream worker repeatedly fails to process.
+    const documentProcessedDlq = new sqs.Queue(this, "DocumentProcessedDlq", {
+      retentionPeriod: cdk.Duration.days(14),
+    });
+    const documentProcessedQueue = new sqs.Queue(
+      this,
+      "DocumentProcessedQueue",
+      {
+        deadLetterQueue: { queue: documentProcessedDlq, maxReceiveCount: 3 },
+      },
+    );
+    new events.Rule(this, "DocumentProcessedRule", {
+      eventBus: this.eventBus,
+      eventPattern: {
+        source: ["documentworker.rag"],
+        detailType: ["DocumentProcessed"],
+      },
+      targets: [new events_targets.SqsQueue(documentProcessedQueue)],
     });
 
     new cdk.CfnOutput(this, "VectorDbBucketName", {
