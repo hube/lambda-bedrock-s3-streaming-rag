@@ -1,0 +1,32 @@
+import * as cdk from "aws-cdk-lib";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import { Construct } from "constructs";
+
+/**
+ * The "document worker" consumption side: the SQS queue a downstream worker
+ * polls for `DocumentProcessed` events, plus a consumer DLQ for messages the
+ * worker repeatedly fails to process. The EventBridge rule that feeds this queue
+ * lives in `DocumentIngestionPipelineStack` and references `queue` cross-stack.
+ */
+export class DocumentWorkerStack extends cdk.Stack {
+  public readonly queue: sqs.Queue;
+
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // Consumer DLQ: redrive target for messages the worker repeatedly fails to
+    // process.
+    const deadLetterQueue = new sqs.Queue(this, "DocumentProcessedDlq", {
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
+    this.queue = new sqs.Queue(this, "DocumentProcessedQueue", {
+      deadLetterQueue: { queue: deadLetterQueue, maxReceiveCount: 3 },
+    });
+
+    new cdk.CfnOutput(this, "DocumentProcessedQueueUrl", {
+      description: "SQS queue receiving DocumentProcessed events",
+      value: this.queue.queueUrl,
+    });
+  }
+}
