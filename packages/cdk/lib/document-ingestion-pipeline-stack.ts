@@ -131,7 +131,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["bedrock:InvokeModel"],
-        resources: [`arn:aws:bedrock:*:*:foundation-model/amazon.titan-*`],
+        resources: [`arn:aws:bedrock:${this.region}:${this.account}:foundation-model/amazon.titan-*`],
       }),
     );
 

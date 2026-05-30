@@ -77,11 +77,11 @@ export class StreamingRagStack extends cdk.Stack {
           "bedrock:InvokeModelWithResponseStream",
         ],
         resources: [
-          `arn:aws:bedrock:*:*:inference-profile/us.anthropic.claude-*`,
-          `arn:aws:bedrock:*:*:foundation-model/anthropic.claude-*`,
-          `arn:aws:bedrock:*:*:foundation-model/amazon.titan-*`,
-          `arn:aws:bedrock:*:*:inference-profile/eu.mistral.pixtral-*`,
-          `arn:aws:bedrock:*:*:foundation-model/mistral.pixtral-*`,
+          `arn:aws:bedrock:${region}:${account}:inference-profile/us.anthropic.claude-*`,
+          `arn:aws:bedrock:${region}:${account}:foundation-model/anthropic.claude-*`,
+          `arn:aws:bedrock:${region}:${account}:foundation-model/amazon.titan-*`,
+          `arn:aws:bedrock:${region}:${account}:inference-profile/eu.mistral.pixtral-*`,
+          `arn:aws:bedrock:${region}:${account}:foundation-model/mistral.pixtral-*`,
         ],
       }),
     );
