@@ -163,10 +163,8 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       targets: [new events_targets.LambdaFunction(this.lambdaFunction)],
     });
 
-    // Route DocumentProcessed events off the default bus to the consumer queue
-    // (in DocumentWorkerStack). A dedicated delivery DLQ captures events
-    // EventBridge cannot deliver to the target (distinct from the queue's own
-    // consumer DLQ).
+    // Route DocumentProcessed events off the default bus to the consumer queue.
+    // A dedicated delivery DLQ captures events EventBridge cannot deliver.
     const documentProcessedDeliveryDlq = new sqs.Queue(
       this,
       "DocumentProcessedDeliveryDlq",
@@ -174,27 +172,47 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         retentionPeriod: cdk.Duration.days(14),
       },
     );
-    // Import the worker queue by ARN: as an imported (unowned) resource, the
-    // target will not auto-add a rule-scoped SendMessage policy on it, which
-    // would otherwise create a cross-stack dependency cycle. DocumentWorkerStack
-    // grants EventBridge send access itself.
+    // Import the worker queue by ARN so the target does not auto-add a
+    // SendMessage policy in the worker stack (which would create a cross-stack
+    // dependency cycle); the grant is added explicitly below.
     const workerQueue = sqs.Queue.fromQueueArn(
       this,
       "DocumentProcessedQueueRef",
       props.documentProcessedQueue.queueArn,
     );
-    new events.Rule(this, "DocumentProcessedRule", {
-      eventBus: this.eventBus,
-      eventPattern: {
-        source: ["documentworker.rag"],
-        detailType: ["DocumentProcessed"],
+    const documentProcessedRule = new events.Rule(
+      this,
+      "DocumentProcessedRule",
+      {
+        eventBus: this.eventBus,
+        eventPattern: {
+          source: ["documentworker.rag"],
+          detailType: ["DocumentProcessed"],
+        },
+        targets: [
+          new events_targets.SqsQueue(workerQueue, {
+            deadLetterQueue: documentProcessedDeliveryDlq,
+          }),
+        ],
       },
-      targets: [
-        new events_targets.SqsQueue(workerQueue, {
-          deadLetterQueue: documentProcessedDeliveryDlq,
-        }),
-      ],
-    });
+    );
+
+    // Allow this rule to deliver to the worker queue. Co-located with the rule
+    // (rather than in the worker stack) so rule and permission change together;
+    // scoped to the rule ARN, which is in-stack so no cross-stack cycle arises.
+    new sqs.QueuePolicy(this, "DocumentProcessedQueuePolicy", {
+      queues: [workerQueue],
+    }).document.addStatements(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("events.amazonaws.com")],
+        actions: ["sqs:SendMessage"],
+        resources: [workerQueue.queueArn],
+        conditions: {
+          ArnEquals: { "aws:SourceArn": documentProcessedRule.ruleArn },
+        },
+      }),
+    );
 
     new cdk.CfnOutput(this, "VectorDbBucketName", {
       description: "S3 bucket where LanceDB sources embeddings",

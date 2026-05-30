@@ -24,6 +24,7 @@ const CHUNK_OVERLAP = 200;
 const EVENT_BUS_NAME = process.env.eventBusName ?? "default";
 const EVENT_SOURCE = "documentworker.rag";
 const DETAIL_TYPE = "DocumentProcessed";
+const SCHEMA_VERSION = "1";
 
 const s3 = new S3Client({ region: REGION });
 const eventBridge = new EventBridgeClient({ region: REGION });
@@ -39,16 +40,24 @@ interface ParsedKey {
 
 // Derive the business identifiers from the S3 key, which follows the convention
 // <userId>/<documentGroupId>/<filename>-<uuid>.pdf. Parsing can always fail, so
-// this throws on a key that does not carry a trailing UUID; the caller surfaces
-// that as a PROCESSING_FAILED event (with null identifiers) rather than letting
-// a malformed key pass downstream.
+// this throws (naming the missing element(s)) when any identifier is absent; the
+// caller surfaces that as a PROCESSING_FAILED event rather than letting a
+// malformed key pass downstream.
 function parseKey(key: string): ParsedKey {
   const [userId, documentGroupId] = key.split("/");
-  const match = key.match(UUID_RE);
-  if (!match) {
-    throw new Error(`Could not parse a document UUID from S3 key: ${key}`);
+  const documentUuid = key.match(UUID_RE)?.[1];
+
+  const missing: string[] = [];
+  if (!userId) missing.push("userId");
+  if (!documentGroupId) missing.push("documentGroupId");
+  if (!documentUuid) missing.push("documentUuid");
+  if (!userId || !documentGroupId || !documentUuid) {
+    throw new Error(
+      `Could not parse [${missing.join(", ")}] from S3 key: ${key}`,
+    );
   }
-  return { userId, documentGroupId, documentUuid: match[1] };
+
+  return { userId, documentGroupId, documentUuid };
 }
 
 interface DocumentProcessedDetail {
@@ -63,9 +72,7 @@ interface DocumentProcessedDetail {
   statusDetail: string | null;
 }
 
-// Emit exactly one DocumentProcessed event to EventBridge. The schema version
-// we control lives inside `detail`; the envelope `version` is set by
-// EventBridge itself (always "0" for custom PutEvents) and is not settable here.
+// Emit one DocumentProcessed event to EventBridge.
 async function publishDocumentProcessed({
   documentUuid,
   userId,
@@ -84,7 +91,7 @@ async function publishDocumentProcessed({
           DetailType: DETAIL_TYPE,
           Resources: [`arn:aws:s3:::${bucket}/${key}`],
           Detail: JSON.stringify({
-            version: "1",
+            version: SCHEMA_VERSION,
             documentUuid,
             userId,
             documentGroupId,
@@ -98,9 +105,11 @@ async function publishDocumentProcessed({
     }),
   );
   if (result.FailedEntryCount && result.FailedEntryCount > 0) {
-    throw new Error(
-      `PutEvents failed for ${key}: ${JSON.stringify(result.Entries)}`,
-    );
+    const detail =
+      result.Entries?.filter((e) => e.ErrorCode)
+        .map((e) => `${e.ErrorCode}: ${e.ErrorMessage}`)
+        .join("; ") || "no entry detail returned";
+    throw new Error(`PutEvents failed for ${key}: ${detail}`);
   }
   console.log(`Published DocumentProcessed (${status}) for ${key}`);
 }

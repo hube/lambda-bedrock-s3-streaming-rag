@@ -62,5 +62,3 @@ consumes
   omitted or be null
 - `processedAt` (ISO-8601 string) — timestamp when processing of the document
   completed
-
-**Publisher contract:** emit exactly one event per document
