@@ -116,3 +116,8 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 - LanceDB connects directly to S3 at runtime — no EFS or local disk needed.
 - The LanceDB table name is always `vectorstore` (env var `lanceDbTable`).
 - The ingestion Lambda needs the public `napi-rs-canvas` Lambda layer; its version is region-specific (see the `CfnMapping` in the pipeline stack). Deploying to an unlisted region fails at CloudFormation time.
+
+## Code Comments
+
+- Keep comments minimal and focused on *why*, not *what*. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
+- Don't restate the same rationale in more than one place. When a non-obvious choice (such as importing the worker queue by ARN to avoid a cross-stack dependency cycle) is already explained where it's made, don't repeat that explanation at each related call site — one comment at the source is enough.
