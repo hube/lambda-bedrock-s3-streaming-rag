@@ -131,7 +131,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["bedrock:InvokeModel"],
-        resources: [`arn:aws:bedrock:${this.region}:${this.account}:foundation-model/amazon.titan-*`],
+        resources: [`arn:aws:bedrock:*:*:foundation-model/amazon.titan-*`],
       }),
     );
 
@@ -197,9 +197,6 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       },
     );
 
-    // Allow this rule to deliver to the worker queue. Co-located with the rule
-    // (rather than in the worker stack) so rule and permission change together;
-    // scoped to the rule ARN, which is in-stack so no cross-stack cycle arises.
     new sqs.QueuePolicy(this, "DocumentProcessedQueuePolicy", {
       queues: [workerQueue],
     }).document.addStatements(

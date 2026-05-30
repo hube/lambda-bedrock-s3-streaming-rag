@@ -72,7 +72,6 @@ interface DocumentProcessedDetail {
   statusDetail: string | null;
 }
 
-// Emit one DocumentProcessed event to EventBridge.
 async function publishDocumentProcessed({
   documentUuid,
   userId,
