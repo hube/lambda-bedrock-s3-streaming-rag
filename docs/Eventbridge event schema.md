@@ -49,11 +49,15 @@ consumes
 - `status` (string) - the only valid values are `"PROCESSING_COMPLETED"` and
   `"PROCESSING_FAILED"`
 - `userId` (string | null) - identifies the user the document belongs to.
-  Non-null for `PROCESSING_COMPLETED`; **may be `null`** for `PROCESSING_FAILED`
-  when the S3 key could not be parsed.
+  Non-null for `PROCESSING_COMPLETED`. For `PROCESSING_FAILED` it is populated
+  best-effort from the S3 key prefix (so a key missing only its UUID still
+  carries it) and is **`null`** only when the key prefix itself could not be
+  parsed.
 - `documentGroupId` (string | null) - identifies the document group the document
-  belongs to. Non-null for `PROCESSING_COMPLETED`; **may be `null`** for
-  `PROCESSING_FAILED` when the S3 key could not be parsed.
+  belongs to. Non-null for `PROCESSING_COMPLETED`. For `PROCESSING_FAILED` it is
+  populated best-effort from the S3 key prefix (so a key missing only its UUID
+  still carries it) and is **`null`** only when the key prefix itself could not
+  be parsed.
 - `s3Key` (string) — the full S3 key to the document. Should be of the form:
   `<userId>/<documentGroupId>/<documentFilename>-<documentUuid>.pdf`
 - `statusDetail` (string | null) — **optional, nullable in the JSON**. When

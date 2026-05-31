@@ -250,19 +250,30 @@ export const handler = async (
     return { statusCode: 200, body: "No documents ingested." };
   }
 
-  // Identifiers are parsed inside the try (parseKey throws on a malformed key).
-  // They start null so a PROCESSING_FAILED event for an unparseable key carries
-  // explicit nulls (per the contract) rather than omitting the fields.
+  // Identifiers start null so a PROCESSING_FAILED event for an unparseable key
+  // carries explicit nulls (per the contract). The path-derived userId and
+  // documentGroupId are populated best-effort *before* parseKey runs, so a key
+  // that is well-formed except for a missing UUID still attributes the failure
+  // to the right user/group. parseKey then validates all three and throws
+  // (naming what is missing) for a truly malformed key.
   let userId: string | null = null;
   let documentGroupId: string | null = null;
   let documentUuid: string | null = null;
   let count: number;
   try {
-    ({ userId, documentGroupId, documentUuid } = parseKey(key));
+    const [pathUserId, pathDocumentGroupId] = key.split("/");
+    userId = pathUserId || null;
+    documentGroupId = pathDocumentGroupId || null;
+
+    // parseKey re-validates all three identifiers and throws (naming what is
+    // missing) for a malformed key; its return narrows them to non-null for the
+    // happy path below.
+    const parsed = parseKey(key);
+    documentUuid = parsed.documentUuid;
 
     // Idempotency: a redelivered event for an already-ingested key does no work
     // and publishes no event.
-    if (await alreadyProcessed(userId, documentGroupId, key)) {
+    if (await alreadyProcessed(parsed.userId, parsed.documentGroupId, key)) {
       console.log(`Duplicate event for ${key}; already ingested, skipping.`);
       return { statusCode: 200, body: "Duplicate event; already processed." };
     }
