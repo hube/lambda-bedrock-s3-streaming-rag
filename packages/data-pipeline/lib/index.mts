@@ -13,21 +13,26 @@ import { PDFParse } from "pdf-parse";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 
-const BUCKET_NAME = process.env.s3BucketName!;
-const REGION = process.env.region ?? "us-east-1";
-const TABLE_NAME = process.env.lanceDbTable ?? "vectorstore";
+const cfg = () => ({
+  bucket: process.env.s3BucketName!,
+  region: process.env.region ?? "us-east-1",
+  table: process.env.lanceDbTable ?? "vectorstore",
+  eventBus: process.env.eventBusName ?? "default",
+});
+
+let _s3: S3Client | undefined;
+const s3 = () => (_s3 ??= new S3Client({ region: cfg().region }));
+let _eb: EventBridgeClient | undefined;
+const eventBridge = () => (_eb ??= new EventBridgeClient({ region: cfg().region }));
+
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 
 // Contract-fixed values for the outbound DocumentProcessed event
 // (see docs/Eventbridge event schema.md).
-const EVENT_BUS_NAME = process.env.eventBusName ?? "default";
 const EVENT_SOURCE = "documentworker.rag";
 const DETAIL_TYPE = "DocumentProcessed";
 const SCHEMA_VERSION = "1";
-
-const s3 = new S3Client({ region: REGION });
-const eventBridge = new EventBridgeClient({ region: REGION });
 
 const UUID_RE =
   /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.pdf$/i;
@@ -81,11 +86,11 @@ async function publishDocumentProcessed({
   status,
   statusDetail,
 }: DocumentProcessedDetail): Promise<void> {
-  const result = await eventBridge.send(
+  const result = await eventBridge().send(
     new PutEventsCommand({
       Entries: [
         {
-          EventBusName: EVENT_BUS_NAME,
+          EventBusName: cfg().eventBus,
           Source: EVENT_SOURCE,
           DetailType: DETAIL_TYPE,
           Resources: [`arn:aws:s3:::${bucket}/${key}`],
@@ -127,7 +132,7 @@ function splitText(text: string): string[] {
 
 async function downloadFromS3(bucket: string, key: string): Promise<string> {
   const tmpPath = join(tmpdir(), basename(key));
-  const response = await s3.send(
+  const response = await s3().send(
     new GetObjectCommand({ Bucket: bucket, Key: key }),
   );
   await pipeline(response.Body as Readable, createWriteStream(tmpPath));
@@ -145,13 +150,13 @@ async function alreadyProcessed(
   key: string,
 ): Promise<boolean> {
   const db = await lancedb.connect(
-    `s3://${BUCKET_NAME}/${userId}/${documentGroupId}/`,
+    `s3://${cfg().bucket}/${userId}/${documentGroupId}/`,
   );
   const tableNames = await db.tableNames();
-  if (!tableNames.includes(TABLE_NAME)) {
+  if (!tableNames.includes(cfg().table)) {
     return false;
   }
-  const table = await db.openTable(TABLE_NAME);
+  const table = await db.openTable(cfg().table);
   // Escape single quotes for the SQL filter expression.
   const escapedKey = key.replace(/'/g, "''");
   const existing = await table
@@ -169,10 +174,10 @@ async function ingest(
   console.log(`Ingesting ${chunks.length} from ${sourceS3ObjectKey} into a DB`);
 
   const embeddings = new BedrockEmbeddings({
-    region: REGION,
+    region: cfg().region,
     maxRetries: 3,
     clientOptions: {
-      region: REGION,
+      region: cfg().region,
       // Adaptive retries gracefully handles throttling from the server side
       retryMode: "adaptive",
       maxAttempts: 10,
@@ -199,26 +204,26 @@ async function ingest(
   console.log(`userId=${userId} and documentGroupId=${documentGroupId}`);
 
   const db = await lancedb.connect(
-    `s3://${BUCKET_NAME}/${userId}/${documentGroupId}/`,
+    `s3://${cfg().bucket}/${userId}/${documentGroupId}/`,
   );
-  console.log(`Connected to DB in ${BUCKET_NAME}`);
+  console.log(`Connected to DB in ${cfg().bucket}`);
 
   const tableNames = await db.tableNames();
   console.log(`Queried table names ${tableNames}`);
 
-  console.log(`Searching for ${TABLE_NAME}`);
-  if (tableNames.includes(TABLE_NAME)) {
-    console.log(`Found ${TABLE_NAME} in list of table names`);
+  console.log(`Searching for ${cfg().table}`);
+  if (tableNames.includes(cfg().table)) {
+    console.log(`Found ${cfg().table} in list of table names`);
 
-    const table = await db.openTable(TABLE_NAME);
-    console.log(`Opened table ${TABLE_NAME}`);
+    const table = await db.openTable(cfg().table);
+    console.log(`Opened table ${cfg().table}`);
 
     await table.add(records);
-    console.log(`Added ${records.length} records to table ${TABLE_NAME}`);
+    console.log(`Added ${records.length} records to table ${cfg().table}`);
   } else {
-    console.log(`Didn't find ${TABLE_NAME}, creating the table`);
-    await db.createTable(TABLE_NAME, records);
-    console.log(`Finished creating table ${TABLE_NAME}`);
+    console.log(`Didn't find ${cfg().table}, creating the table`);
+    await db.createTable(cfg().table, records);
+    console.log(`Finished creating table ${cfg().table}`);
   }
 
   console.log(`DONE`);
@@ -317,7 +322,7 @@ export const handler = async (
   // transient PutEvents failure cannot be misreported as PROCESSING_FAILED. If
   // the publish throws here it propagates and EventBridge retries the whole
   // invocation (see the idempotency note in the README/handler docs).
-  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${BUCKET_NAME}/ table=${TABLE_NAME}`;
+  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${cfg().bucket}/ table=${cfg().table}`;
   console.log(msg);
 
   await publishDocumentProcessed({
@@ -332,3 +337,6 @@ export const handler = async (
 
   return { statusCode: 200, body: msg };
 };
+
+// Test-only surface. Not part of the Lambda's public contract.
+export const __testables = { parseKey, splitText };
