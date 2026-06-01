@@ -50,7 +50,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
     const localBuildCommands = (outputDir: string) =>
       [
         "yarn install --immutable --immutable-cache",
-        `yarn build ${outputDir}`,
+        `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
         "yarn workspaces focus --production",
       ].join(" && ");
@@ -60,7 +60,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         // --immutable catches lockfile drift; --immutable-cache is omitted
         // because the cache isn't committed and is populated during the build.
         "yarn install --immutable",
-        `yarn build ${outputDir}`,
+        `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
         "yarn workspaces focus --production",
       ].join(" && ");
