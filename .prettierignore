@@ -1,2 +1,4 @@
 cdk.out
 dist
+.yarn
+.pnp.*

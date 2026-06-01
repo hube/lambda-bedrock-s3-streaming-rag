@@ -47,10 +47,20 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
 
     const functionDir = path.join(__dirname, "../../data-pipeline");
 
-    const buildCommands = (outputDir: string) =>
+    const localBuildCommands = (outputDir: string) =>
       [
         "yarn install --immutable --immutable-cache",
-        `yarn build ${outputDir}`,
+        `yarn build "${outputDir}"`,
+        `cd "${outputDir}"`,
+        "yarn workspaces focus --production",
+      ].join(" && ");
+
+    const dockerBuildCommands = (outputDir: string) =>
+      [
+        // --immutable catches lockfile drift; --immutable-cache is omitted
+        // because the cache isn't committed and is populated during the build.
+        "yarn install --immutable",
+        `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
         "yarn workspaces focus --production",
       ].join(" && ");
@@ -98,14 +108,17 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
               tryBundle(outputDir: string): boolean {
                 const result = spawnSync(
                   "bash",
-                  ["-c", `cd "${functionDir}" && ${buildCommands(outputDir)}`],
+                  [
+                    "-c",
+                    `cd "${functionDir}" && ${localBuildCommands(outputDir)}`,
+                  ],
                   { stdio: "inherit" },
                 );
                 return result.status === 0;
               },
             },
             image: lambda.Runtime.NODEJS_22_X.bundlingImage,
-            command: ["bash", "-c", buildCommands("/asset-output")],
+            command: ["bash", "-c", dockerBuildCommands("/asset-output")],
           },
         }),
         layers: [napiRsCanvasLayer],
