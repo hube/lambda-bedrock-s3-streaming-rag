@@ -38,7 +38,9 @@ export class StreamingRagStack extends cdk.Stack {
 
     const dockerBuildCommands = (outputDir: string) =>
       [
-        "yarn install",
+        // --immutable catches lockfile drift; --immutable-cache is omitted
+        // because the cache isn't committed and is populated during the build.
+        "yarn install --immutable",
         `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
         "yarn workspaces focus --production",
