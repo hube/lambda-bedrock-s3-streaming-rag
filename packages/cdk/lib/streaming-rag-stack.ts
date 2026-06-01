@@ -28,9 +28,17 @@ export class StreamingRagStack extends cdk.Stack {
 
     const functionDir = path.join(__dirname, "../../rag-query-function");
 
-    const buildCommands = (outputDir: string) =>
+    const localBuildCommands = (outputDir: string) =>
       [
         "yarn install --immutable --immutable-cache",
+        `yarn build "${outputDir}"`,
+        `cd "${outputDir}"`,
+        "yarn workspaces focus --production",
+      ].join(" && ");
+
+    const dockerBuildCommands = (outputDir: string) =>
+      [
+        "yarn install",
         `yarn build "${outputDir}"`,
         `cd "${outputDir}"`,
         "yarn workspaces focus --production",
@@ -46,7 +54,7 @@ export class StreamingRagStack extends cdk.Stack {
             tryBundle(outputDir: string): boolean {
               const result = spawnSync(
                 "bash",
-                ["-c", `cd "${functionDir}" && ${buildCommands(outputDir)}`],
+                ["-c", `cd "${functionDir}" && ${localBuildCommands(outputDir)}`],
                 { stdio: "inherit" },
               );
               return result.status === 0;
@@ -54,7 +62,7 @@ export class StreamingRagStack extends cdk.Stack {
           },
           // Docker fallback (used in CI environments without local Node)
           image: lambda.Runtime.NODEJS_24_X.bundlingImage,
-          command: ["bash", "-c", buildCommands("/asset-output")],
+          command: ["bash", "-c", dockerBuildCommands("/asset-output")],
         },
       }),
       timeout: cdk.Duration.seconds(300),
