@@ -106,7 +106,10 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
               tryBundle(outputDir: string): boolean {
                 const result = spawnSync(
                   "bash",
-                  ["-c", `cd "${functionDir}" && ${localBuildCommands(outputDir)}`],
+                  [
+                    "-c",
+                    `cd "${functionDir}" && ${localBuildCommands(outputDir)}`,
+                  ],
                   { stdio: "inherit" },
                 );
                 return result.status === 0;

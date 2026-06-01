@@ -15,8 +15,14 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tsconfig/node24": "^24.0.4",
-    "aws-cdk": "2.x"
+    "@types/node": "25.x",
+    "aws-cdk": "2.x",
+    "eslint": "^10.3.0",
+    "prettier": "^3.8.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.59.3"
   },
   "dependencies": {
     "aws-cdk-lib": "2.x",
