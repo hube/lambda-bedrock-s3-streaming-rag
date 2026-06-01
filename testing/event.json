@@ -1,4 +1,4 @@
 {
-    "query": "What is Amazon Bedrock for?",
-    "model": "us.anthropic.claude-sonnet-4-6"
+  "query": "What is Amazon Bedrock for?",
+  "model": "us.anthropic.claude-sonnet-4-6"
 }

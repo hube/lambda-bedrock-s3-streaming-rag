@@ -119,7 +119,7 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 
 ## Code Comments
 
-- Keep comments minimal and focused on *why*, not *what*. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
+- Keep comments minimal and focused on _why_, not _what_. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
 - Don't restate the same rationale in more than one place. When a non-obvious choice (such as importing the worker queue by ARN to avoid a cross-stack dependency cycle) is already explained where it's made, don't repeat that explanation at each related call site — one comment at the source is enough.
 
 ## Verifying Before You Commit

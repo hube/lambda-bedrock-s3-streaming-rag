@@ -10,7 +10,6 @@ export default function App() {
   const [chat, setChat] = useState([]);
 
   const streamData = async () => {
-
     const credentials = {
       accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY,
@@ -21,7 +20,7 @@ export default function App() {
       service: "lambda",
       region: process.env.REACT_APP_AWS_REGION,
       credentials,
-      sha256: Sha256
+      sha256: Sha256,
     });
     const apiUrl = new URL(process.env.REACT_APP_LAMBDA_ENDPOINT_URL);
 
@@ -35,7 +34,7 @@ export default function App() {
       // model: "anthropic.claude-3-sonnet-20240229-v1:0",
       // model: "mistral.mistral-large-2402-v1:0",
     });
-    
+
     let signed = await sigv4.sign({
       body,
       method: "POST",
@@ -44,8 +43,8 @@ export default function App() {
       protocol: apiUrl.protocol,
       headers: {
         "Content-Type": "application/json",
-        host: apiUrl.hostname
-      }
+        host: apiUrl.hostname,
+      },
     });
 
     try {
@@ -53,22 +52,22 @@ export default function App() {
         method: signed.method,
         headers: signed.headers,
         body: body,
-        mode: "cors"
+        mode: "cors",
       });
 
-      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      const reader = response.body
+        .pipeThrough(new TextDecoderStream())
+        .getReader();
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         setChat((data) => [...data, value]);
       }
-    }
-    catch (err) {
-      console.log('Something went wrong');
+    } catch (err) {
+      console.log("Something went wrong");
       console.log(err);
       return;
     }
-
   };
 
   return (
