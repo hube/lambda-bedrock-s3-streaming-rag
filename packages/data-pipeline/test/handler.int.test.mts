@@ -53,7 +53,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   let sqsQueueUrl: string;
 
   beforeAll(async () => {
-    container = await new GenericContainer("localstack/localstack:latest")
+    container = await new GenericContainer("localstack/localstack:3")
       .withEnvironment({ SERVICES: "s3,sqs,events" })
       .withExposedPorts(4566)
       .withLogConsumer((stream) => {
