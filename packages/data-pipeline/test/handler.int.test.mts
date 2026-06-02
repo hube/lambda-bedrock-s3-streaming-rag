@@ -56,6 +56,14 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
     container = await new GenericContainer("localstack/localstack:latest")
       .withEnvironment({ SERVICES: "s3,sqs,events" })
       .withExposedPorts(4566)
+      .withLogConsumer((stream) => {
+        stream.on("data", (line: Buffer) =>
+          process.stdout.write(`[LocalStack] ${line.toString()}`),
+        );
+        stream.on("err", (line: Buffer) =>
+          process.stderr.write(`[LocalStack ERR] ${line.toString()}`),
+        );
+      })
       .withWaitStrategy(Wait.forLogMessage("Ready.", 1))
       .withStartupTimeout(120_000)
       .start();
