@@ -16,10 +16,8 @@ import {
   PutRuleCommand,
   PutTargetsCommand,
 } from "@aws-sdk/client-eventbridge";
-import {
-  LocalstackContainer,
-  StartedLocalStackContainer,
-} from "@testcontainers/localstack";
+import { GenericContainer, Wait } from "testcontainers";
+import type { StartedTestContainer } from "testcontainers";
 import * as lancedb from "@lancedb/lancedb";
 import { handler } from "../lib/index.mts";
 import { makeEvent } from "./helpers.mts";
@@ -49,17 +47,20 @@ const EVENT_BUS = "test-bus";
 const KEY = "user1/groupA/document-550e8400-e29b-41d4-a716-446655440000.pdf";
 
 describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
-  let container: StartedLocalStackContainer;
+  let container: StartedTestContainer;
   let s3: S3Client;
   let sqs: SQSClient;
   let sqsQueueUrl: string;
 
   beforeAll(async () => {
-    container = await new LocalstackContainer("localstack/localstack:latest")
+    container = await new GenericContainer("localstack/localstack:latest")
       .withEnvironment({ SERVICES: "s3,sqs,events" })
+      .withExposedPorts(4566)
+      .withWaitStrategy(Wait.forLogMessage("Ready.", 1))
+      .withStartupTimeout(120_000)
       .start();
 
-    const endpoint = container.getConnectionUri();
+    const endpoint = `http://${container.getHost()}:${container.getMappedPort(4566)}`;
 
     process.env.AWS_ENDPOINT_URL = endpoint;
     process.env.AWS_ALLOW_HTTP = "true";
