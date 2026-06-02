@@ -32,7 +32,14 @@ function requireConfig(): void {
 }
 
 let _s3: S3Client | undefined;
-const s3 = () => (_s3 ??= new S3Client({ region: cfg().region }));
+// forcePathStyle is required when AWS_ENDPOINT_URL points to a local endpoint
+// (e.g. LocalStack) where virtual-hosted-style bucket DNS doesn't resolve.
+// Production Lambda never sets AWS_ENDPOINT_URL, so this is always false there.
+const s3 = () =>
+  (_s3 ??= new S3Client({
+    region: cfg().region,
+    forcePathStyle: !!process.env.AWS_ENDPOINT_URL,
+  }));
 let _eb: EventBridgeClient | undefined;
 const eventBridge = () =>
   (_eb ??= new EventBridgeClient({ region: cfg().region }));
