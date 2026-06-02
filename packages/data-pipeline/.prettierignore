@@ -1,5 +1,6 @@
 dist
 coverage
+.vitest-cache
 node_modules
 .yarn
 .pnp.*

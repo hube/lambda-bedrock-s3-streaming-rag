@@ -104,7 +104,7 @@ jobs:
         run: docker info
 
       - name: Pre-pull LocalStack image
-        run: docker pull localstack/localstack:latest
+        run: docker pull localstack/localstack:3
 
       - name: Run integration tests
         working-directory: packages/data-pipeline

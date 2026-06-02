@@ -13,23 +13,33 @@ import { PDFParse } from "pdf-parse";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 
-const cfg = () => ({
-  bucket: process.env.s3BucketName!,
-  region: process.env.region ?? "us-east-1",
-  table: process.env.lanceDbTable ?? "vectorstore",
-  eventBus: process.env.eventBusName ?? "default",
-});
+// Single source of truth for env-var requirements. undefined default = required
+// (no safe fallback); a string default = optional. requireConfig() and cfg()
+// both read this map, so a new mandatory var is one edit here rather than two.
+const ENV_DEFAULTS = {
+  s3BucketName: undefined,
+  region: "us-east-1",
+  lanceDbTable: "vectorstore",
+  eventBusName: "default",
+} as const;
 
-// s3BucketName has no safe default (unlike region/table/eventBus), and an
-// unset value otherwise leaks downstream as an opaque "s3://undefined/..."
-// LanceDB error. Validate it at handler entry so a misconfigured deployment
-// fails with a clear, attributable message before any S3/Bedrock work.
+// s3BucketName has no safe default; an unset value otherwise leaks downstream
+// as an opaque "s3://undefined/..." LanceDB error. Validate at handler entry.
 function requireConfig(): void {
-  const missing = (["s3BucketName"] as const).filter((k) => !process.env[k]);
+  const missing = (
+    Object.keys(ENV_DEFAULTS) as (keyof typeof ENV_DEFAULTS)[]
+  ).filter((k) => ENV_DEFAULTS[k] === undefined && !process.env[k]);
   if (missing.length > 0) {
     throw new Error(`Missing required env var(s): ${missing.join(", ")}`);
   }
 }
+
+const cfg = () => ({
+  bucket: process.env.s3BucketName!,
+  region: process.env.region ?? ENV_DEFAULTS.region,
+  table: process.env.lanceDbTable ?? ENV_DEFAULTS.lanceDbTable,
+  eventBus: process.env.eventBusName ?? ENV_DEFAULTS.eventBusName,
+});
 
 let _s3: S3Client | undefined;
 // forcePathStyle is required when AWS_ENDPOINT_URL points to a local endpoint
@@ -158,20 +168,20 @@ async function downloadFromS3(bucket: string, key: string): Promise<string> {
   return tmpPath;
 }
 
-// Idempotency guard: returns true if this exact S3 key has already been
-// ingested into the tenant's LanceDB table. EventBridge S3 delivery is
-// at-least-once, so a redelivered event must not re-embed/re-append or publish a
-// second DocumentProcessed event. Detection is non-atomic (two simultaneous
-// duplicates could both pass), which is acceptable for ordinary redelivery.
-// Takes the already-open connection and table list so the duplicate check and
-// the subsequent write share a single S3 connection and table-name listing.
+// Idempotency guard: checks whether this S3 key has already been ingested.
+// EventBridge delivers at-least-once, so a redelivered event must not
+// re-embed/re-append or publish a second DocumentProcessed event. Detection is
+// non-atomic (two simultaneous duplicates could both pass the check), which is
+// acceptable for ordinary redelivery.
+// Returns the opened table handle when the table exists so ingest() can reuse
+// it on the append path instead of opening the same table a second time.
 async function alreadyProcessed(
   db: lancedb.Connection,
   tableNames: string[],
   key: string,
-): Promise<boolean> {
+): Promise<{ isDuplicate: boolean; openedTable: lancedb.Table | null }> {
   if (!tableNames.includes(cfg().table)) {
-    return false;
+    return { isDuplicate: false, openedTable: null };
   }
   const table = await db.openTable(cfg().table);
   // Escape single quotes for the SQL filter expression.
@@ -181,12 +191,18 @@ async function alreadyProcessed(
     .where(`sourceS3ObjectKey = '${escapedKey}'`)
     .limit(1)
     .toArray();
-  return existing.length > 0;
+  return { isDuplicate: existing.length > 0, openedTable: table };
 }
 
 async function ingest(
   db: lancedb.Connection,
-  tableNames: string[],
+  // Pre-opened table from the idempotency check (null when the table didn't
+  // exist yet at that point). Reusing it avoids a second openTable call on the
+  // append path. ingest re-lists table names immediately before the write to
+  // narrow the concurrency race window: another invocation may have created the
+  // table during the embedding loop, so the snapshot taken before embedding
+  // could be stale.
+  preOpenedTable: lancedb.Table | null,
   chunks: string[],
   sourceS3ObjectKey: string,
 ): Promise<number> {
@@ -219,13 +235,15 @@ async function ingest(
   }));
   console.log(`Created ${records.length} records`);
 
+  // Re-list table names immediately before the write to narrow the race window.
+  const freshTableNames = await db.tableNames();
   console.log(`Searching for ${cfg().table}`);
-  if (tableNames.includes(cfg().table)) {
+  if (freshTableNames.includes(cfg().table)) {
     console.log(`Found ${cfg().table} in list of table names`);
-
-    const table = await db.openTable(cfg().table);
+    // Reuse the pre-opened handle when available; open it now only if another
+    // concurrent invocation created the table after the idempotency check.
+    const table = preOpenedTable ?? (await db.openTable(cfg().table));
     console.log(`Opened table ${cfg().table}`);
-
     await table.add(records);
     console.log(`Added ${records.length} records to table ${cfg().table}`);
   } else {
@@ -286,16 +304,21 @@ export const handler = async (
     const parsed = parseKey(key);
     documentUuid = parsed.documentUuid;
 
-    // One connection per document, shared by the idempotency check and the
-    // write, so we don't open the same S3 location (and list table names) twice.
+    // One connection per document, shared by the idempotency check and write.
     const db = await lancedb.connect(
       `s3://${cfg().bucket}/${parsed.userId}/${parsed.documentGroupId}/`,
     );
     const tableNames = await db.tableNames();
 
     // Idempotency: a redelivered event for an already-ingested key does no work
-    // and publishes no event.
-    if (await alreadyProcessed(db, tableNames, key)) {
+    // and publishes no event. openedTable is carried forward so ingest can
+    // reuse it on the append path without a second db.openTable() call.
+    const { isDuplicate, openedTable } = await alreadyProcessed(
+      db,
+      tableNames,
+      key,
+    );
+    if (isDuplicate) {
       console.log(`Duplicate event for ${key}; already ingested, skipping.`);
       return { statusCode: 200, body: "Duplicate event; already processed." };
     }
@@ -310,7 +333,7 @@ export const handler = async (
     const chunks = splitText(pdfData.text);
     console.log(`Extracted ${chunks.length} chunks from ${key}`);
 
-    count = await ingest(db, tableNames, chunks, key);
+    count = await ingest(db, openedTable, chunks, key);
   } catch (err) {
     const statusDetail = err instanceof Error ? err.message : String(err);
     console.error(

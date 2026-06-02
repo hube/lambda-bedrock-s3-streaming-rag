@@ -45,7 +45,9 @@ let mockDb: {
 };
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  // Only fake Date — faking the full scheduler (setImmediate etc.) interferes
+  // with Node stream completion in the happy-path tests that pipe real Readables.
+  vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(FIXED_TIME);
 
   s3Mock
@@ -106,7 +108,10 @@ describe("handler — non-PDF skip", () => {
       "user1/groupA/document-550e8400-e29b-41d4-a716-446655440000.PDF";
     const result = await handler(makeEvent(key));
     expect(result.statusCode).toBe(200);
-    expect(result.body).not.toBe("No documents ingested.");
+    // Positive assertion: ingestion actually ran (not just "returned something").
+    expect(mockDb.createTable).toHaveBeenCalled();
+    const detail = getPublishedDetail(ebMock);
+    expect(detail.status).toBe("PROCESSING_COMPLETED");
   });
 });
 

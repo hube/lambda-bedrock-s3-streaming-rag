@@ -7,6 +7,7 @@ import {
 import {
   CreateQueueCommand,
   GetQueueAttributesCommand,
+  type Message,
   ReceiveMessageCommand,
   SQSClient,
 } from "@aws-sdk/client-sqs";
@@ -181,8 +182,21 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   });
 
   it("D.3: duplicate event is idempotent — row count unchanged, no new event", async () => {
+    // Explicit precondition: this test depends on D.1 having ingested KEY. Assert
+    // it directly so a failure here names the broken dependency rather than
+    // silently exercising wrong state (e.g. treating KEY as new on a missed D.1).
     const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user1/groupA/`);
     const table = await db.openTable("vectorstore");
+    const seedRows = await table
+      .query()
+      .where(`sourceS3ObjectKey = '${KEY}'`)
+      .limit(1)
+      .toArray();
+    expect(
+      seedRows.length,
+      "Precondition: D.1 must have ingested KEY before D.3 runs",
+    ).toBeGreaterThan(0);
+
     const rowsBefore = (await table.query().toArray()).length;
 
     const result = await handler(makeEvent(KEY, UPLOAD_BUCKET));
@@ -209,17 +223,24 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   });
 
   it("D.5: published event matches DocumentProcessed schema contract", async () => {
-    const messages = await sqs.send(
-      new ReceiveMessageCommand({
-        QueueUrl: sqsQueueUrl,
-        MaxNumberOfMessages: 10,
-        WaitTimeSeconds: 5,
-      }),
-    );
+    // EventBridge→SQS routing is asynchronous inside LocalStack; a single
+    // long-poll may return before delivery completes. Poll with a deadline so
+    // the assertion is deterministic regardless of LocalStack scheduling.
+    let received: Message[] = [];
+    const deadline = Date.now() + 15_000;
+    while (received.length === 0 && Date.now() < deadline) {
+      const res = await sqs.send(
+        new ReceiveMessageCommand({
+          QueueUrl: sqsQueueUrl,
+          MaxNumberOfMessages: 10,
+          WaitTimeSeconds: 2,
+        }),
+      );
+      received = res.Messages ?? [];
+    }
 
-    // At least the D.1 COMPLETED event should have been delivered.
-    expect(messages.Messages?.length).toBeGreaterThan(0);
-    const bodies = (messages.Messages ?? []).map((m) => {
+    expect(received.length).toBeGreaterThan(0);
+    const bodies = received.map((m) => {
       const envelope = JSON.parse(m.Body!) as { detail: unknown };
       return envelope.detail as Record<string, unknown>;
     });
