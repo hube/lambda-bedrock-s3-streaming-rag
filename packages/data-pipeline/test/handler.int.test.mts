@@ -51,9 +51,9 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   let sqsQueueUrl: string;
 
   beforeAll(async () => {
-    container = await new LocalstackContainer(
-      "localstack/localstack:latest",
-    ).start();
+    container = await new LocalstackContainer("localstack/localstack:3")
+      .withEnvironment({ SERVICES: "s3,sqs,events" })
+      .start();
 
     const endpoint = container.getConnectionUri();
 
