@@ -27,14 +27,18 @@ import { dockerAvailable } from "./setup.int.mts";
 
 // Embeddings and pdf-parse are always mocked (paid / native deps).
 vi.mock("@langchain/aws", () => ({
-  BedrockEmbeddings: vi.fn().mockImplementation(() => ({
-    embedQuery: vi.fn().mockResolvedValue(Array<number>(8).fill(0.5)),
-  })),
+  BedrockEmbeddings: vi.fn().mockImplementation(function () {
+    return {
+      embedQuery: vi.fn().mockResolvedValue(Array<number>(8).fill(0.5)),
+    };
+  }),
 }));
 vi.mock("pdf-parse", () => ({
-  PDFParse: vi.fn().mockImplementation(() => ({
-    getText: vi.fn().mockResolvedValue({ text: "word ".repeat(200) }),
-  })),
+  PDFParse: vi.fn().mockImplementation(function () {
+    return {
+      getText: vi.fn().mockResolvedValue({ text: "word ".repeat(200) }),
+    };
+  }),
 }));
 vi.mock("pdf-parse/worker", () => ({ CanvasFactory: vi.fn() }));
 
@@ -51,7 +55,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   let sqsQueueUrl: string;
 
   beforeAll(async () => {
-    container = await new LocalstackContainer("localstack/localstack:3")
+    container = await new LocalstackContainer("localstack/localstack:latest")
       .withEnvironment({ SERVICES: "s3,sqs,events" })
       .start();
 
