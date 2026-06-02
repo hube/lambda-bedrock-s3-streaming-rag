@@ -74,19 +74,15 @@ beforeEach(() => {
 
   vi.mocked(lancedb.connect).mockResolvedValue(mockDb as never);
 
-  vi.mocked(PDFParse).mockImplementation(
-    () =>
-      ({
-        getText: vi.fn().mockResolvedValue({ text: "word ".repeat(200) }),
-      }) as never,
-  );
+  vi.mocked(PDFParse).mockImplementation(function () {
+    return {
+      getText: vi.fn().mockResolvedValue({ text: "word ".repeat(200) }),
+    };
+  } as never);
 
-  vi.mocked(BedrockEmbeddings).mockImplementation(
-    () =>
-      ({
-        embedQuery: vi.fn().mockResolvedValue(VECTOR),
-      }) as never,
-  );
+  vi.mocked(BedrockEmbeddings).mockImplementation(function () {
+    return { embedQuery: vi.fn().mockResolvedValue(VECTOR) };
+  } as never);
 });
 
 afterEach(() => {
@@ -206,12 +202,11 @@ describe("handler — idempotency", () => {
 
 describe("handler — error paths", () => {
   it("C.8: embedding rejects → 500 + PROCESSING_FAILED, no COMPLETED or write", async () => {
-    vi.mocked(BedrockEmbeddings).mockImplementation(
-      () =>
-        ({
-          embedQuery: vi.fn().mockRejectedValue(new Error("Bedrock throttled")),
-        }) as never,
-    );
+    vi.mocked(BedrockEmbeddings).mockImplementation(function () {
+      return {
+        embedQuery: vi.fn().mockRejectedValue(new Error("Bedrock throttled")),
+      };
+    } as never);
 
     const result = await handler(makeEvent(VALID_KEY));
     expect(result.statusCode).toBe(500);

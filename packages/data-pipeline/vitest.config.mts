@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  cacheDir: ".vitest-cache",
   test: {
     projects: [
       {
@@ -27,7 +28,6 @@ export default defineConfig({
       reporter: ["text", "html", "lcov", "json-summary"],
       include: ["lib/**/*.mts"],
       exclude: ["scripts/**", "dist/**", "deploy/**", "test/**", "**/*.d.ts"],
-      all: true,
       thresholds: {
         lines: 85,
         functions: 90,
