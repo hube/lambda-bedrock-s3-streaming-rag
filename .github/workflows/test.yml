@@ -100,6 +100,15 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Verify Docker is available
+        run: docker info
+
+      - name: Pre-pull LocalStack image
+        run: docker pull localstack/localstack:latest
+
       - name: Run integration tests
         working-directory: packages/data-pipeline
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+          DOCKER_HOST: unix:///var/run/docker.sock
         run: yarn test:integration
