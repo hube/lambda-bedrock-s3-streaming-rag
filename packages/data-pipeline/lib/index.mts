@@ -20,10 +20,22 @@ const cfg = () => ({
   eventBus: process.env.eventBusName ?? "default",
 });
 
+// s3BucketName has no safe default (unlike region/table/eventBus), and an
+// unset value otherwise leaks downstream as an opaque "s3://undefined/..."
+// LanceDB error. Validate it at handler entry so a misconfigured deployment
+// fails with a clear, attributable message before any S3/Bedrock work.
+function requireConfig(): void {
+  const missing = (["s3BucketName"] as const).filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required env var(s): ${missing.join(", ")}`);
+  }
+}
+
 let _s3: S3Client | undefined;
 const s3 = () => (_s3 ??= new S3Client({ region: cfg().region }));
 let _eb: EventBridgeClient | undefined;
-const eventBridge = () => (_eb ??= new EventBridgeClient({ region: cfg().region }));
+const eventBridge = () =>
+  (_eb ??= new EventBridgeClient({ region: cfg().region }));
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
@@ -144,15 +156,13 @@ async function downloadFromS3(bucket: string, key: string): Promise<string> {
 // at-least-once, so a redelivered event must not re-embed/re-append or publish a
 // second DocumentProcessed event. Detection is non-atomic (two simultaneous
 // duplicates could both pass), which is acceptable for ordinary redelivery.
+// Takes the already-open connection and table list so the duplicate check and
+// the subsequent write share a single S3 connection and table-name listing.
 async function alreadyProcessed(
-  userId: string,
-  documentGroupId: string,
+  db: lancedb.Connection,
+  tableNames: string[],
   key: string,
 ): Promise<boolean> {
-  const db = await lancedb.connect(
-    `s3://${cfg().bucket}/${userId}/${documentGroupId}/`,
-  );
-  const tableNames = await db.tableNames();
   if (!tableNames.includes(cfg().table)) {
     return false;
   }
@@ -168,6 +178,8 @@ async function alreadyProcessed(
 }
 
 async function ingest(
+  db: lancedb.Connection,
+  tableNames: string[],
   chunks: string[],
   sourceS3ObjectKey: string,
 ): Promise<number> {
@@ -200,17 +212,6 @@ async function ingest(
   }));
   console.log(`Created ${records.length} records`);
 
-  const [userId, documentGroupId] = sourceS3ObjectKey.split("/");
-  console.log(`userId=${userId} and documentGroupId=${documentGroupId}`);
-
-  const db = await lancedb.connect(
-    `s3://${cfg().bucket}/${userId}/${documentGroupId}/`,
-  );
-  console.log(`Connected to DB in ${cfg().bucket}`);
-
-  const tableNames = await db.tableNames();
-  console.log(`Queried table names ${tableNames}`);
-
   console.log(`Searching for ${cfg().table}`);
   if (tableNames.includes(cfg().table)) {
     console.log(`Found ${cfg().table} in list of table names`);
@@ -231,7 +232,7 @@ async function ingest(
   return records.length;
 }
 
-interface S3EventBridgeEvent {
+export interface S3EventBridgeEvent {
   source: string;
   "detail-type": string;
   detail: {
@@ -266,6 +267,8 @@ export const handler = async (
   let documentUuid: string | null = null;
   let count: number;
   try {
+    requireConfig();
+
     const [pathUserId, pathDocumentGroupId] = key.split("/");
     userId = pathUserId || null;
     documentGroupId = pathDocumentGroupId || null;
@@ -276,9 +279,16 @@ export const handler = async (
     const parsed = parseKey(key);
     documentUuid = parsed.documentUuid;
 
+    // One connection per document, shared by the idempotency check and the
+    // write, so we don't open the same S3 location (and list table names) twice.
+    const db = await lancedb.connect(
+      `s3://${cfg().bucket}/${parsed.userId}/${parsed.documentGroupId}/`,
+    );
+    const tableNames = await db.tableNames();
+
     // Idempotency: a redelivered event for an already-ingested key does no work
     // and publishes no event.
-    if (await alreadyProcessed(parsed.userId, parsed.documentGroupId, key)) {
+    if (await alreadyProcessed(db, tableNames, key)) {
       console.log(`Duplicate event for ${key}; already ingested, skipping.`);
       return { statusCode: 200, body: "Duplicate event; already processed." };
     }
@@ -293,7 +303,7 @@ export const handler = async (
     const chunks = splitText(pdfData.text);
     console.log(`Extracted ${chunks.length} chunks from ${key}`);
 
-    count = await ingest(chunks, key);
+    count = await ingest(db, tableNames, chunks, key);
   } catch (err) {
     const statusDetail = err instanceof Error ? err.message : String(err);
     console.error(

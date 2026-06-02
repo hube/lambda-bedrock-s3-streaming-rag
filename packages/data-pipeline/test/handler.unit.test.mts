@@ -10,7 +10,11 @@ import * as lancedb from "@lancedb/lancedb";
 import { PDFParse } from "pdf-parse";
 import { BedrockEmbeddings } from "@langchain/aws";
 import { handler } from "../lib/index.mts";
-import { makeEvent, getPublishedDetail, getPublishedEntry } from "./helpers.mts";
+import {
+  makeEvent,
+  getPublishedDetail,
+  getPublishedEntry,
+} from "./helpers.mts";
 
 vi.mock("@lancedb/lancedb", () => ({ connect: vi.fn() }));
 vi.mock("pdf-parse", () => ({ PDFParse: vi.fn() }));
@@ -47,9 +51,7 @@ beforeEach(() => {
   s3Mock
     .on(GetObjectCommand)
     .resolves({ Body: Readable.from(Buffer.from("pdf bytes")) as never });
-  ebMock
-    .on(PutEventsCommand)
-    .resolves({ FailedEntryCount: 0, Entries: [] });
+  ebMock.on(PutEventsCommand).resolves({ FailedEntryCount: 0, Entries: [] });
 
   mockQueryChain = {
     where: vi.fn(),
@@ -188,7 +190,9 @@ describe("handler — happy path", () => {
 describe("handler — idempotency", () => {
   it("C.7: duplicate → 200 'Duplicate...', no PutEvents/add/createTable/GetObject", async () => {
     mockDb.tableNames.mockResolvedValue(["vectorstore"]);
-    mockQueryChain.toArray.mockResolvedValue([{ sourceS3ObjectKey: VALID_KEY }]);
+    mockQueryChain.toArray.mockResolvedValue([
+      { sourceS3ObjectKey: VALID_KEY },
+    ]);
 
     const result = await handler(makeEvent(VALID_KEY));
     expect(result.statusCode).toBe(200);
@@ -252,7 +256,9 @@ describe("handler — PutEvents failure propagation", () => {
       Entries: [{ ErrorCode: "InternalFailure", ErrorMessage: "EB error" }],
     });
 
-    await expect(handler(makeEvent(VALID_KEY))).rejects.toThrow(/PutEvents failed/);
+    await expect(handler(makeEvent(VALID_KEY))).rejects.toThrow(
+      /PutEvents failed/,
+    );
   });
 
   it("C.12: PutEvents FailedEntryCount>0 on failure path → throw propagates out of catch", async () => {
@@ -262,7 +268,9 @@ describe("handler — PutEvents failure propagation", () => {
       Entries: [{ ErrorCode: "Throttling", ErrorMessage: "rate exceeded" }],
     });
 
-    await expect(handler(makeEvent(VALID_KEY))).rejects.toThrow(/PutEvents failed/);
+    await expect(handler(makeEvent(VALID_KEY))).rejects.toThrow(
+      /PutEvents failed/,
+    );
   });
 });
 
@@ -327,23 +335,26 @@ describe("handler — EventBridge event shape", () => {
 });
 
 describe("handler — missing env var", () => {
-  it("C.16: missing s3BucketName surfaces as an error without resetModules", async () => {
+  it("C.16: missing s3BucketName fails fast via the handler's own config check", async () => {
     const original = process.env.s3BucketName;
     delete process.env.s3BucketName;
 
-    // Without a bucket name, lancedb.connect URL contains "undefined".
-    // Configure the mock to surface this as a real error.
-    vi.mocked(lancedb.connect).mockImplementation((url: unknown) => {
-      if (String(url).includes("undefined")) {
-        return Promise.reject(new Error("Missing bucket: URL is " + String(url)));
-      }
-      return Promise.resolve(mockDb as never);
-    });
+    try {
+      const result = await handler(makeEvent(VALID_KEY));
+      expect(result.statusCode).toBe(500);
 
-    const result = await handler(makeEvent(VALID_KEY));
-    expect(result.statusCode).toBe(500);
-    expect(result.body).toContain("Missing bucket");
+      // The handler validates config itself and reports the missing var by
+      // name — it does not rely on a downstream service to reveal the gap.
+      const detail = getPublishedDetail(ebMock);
+      expect(detail.status).toBe("PROCESSING_FAILED");
+      expect(String(detail.statusDetail)).toContain(
+        "Missing required env var(s): s3BucketName",
+      );
 
-    process.env.s3BucketName = original;
+      // Fail-fast: no S3/LanceDB work is attempted with invalid config.
+      expect(lancedb.connect).not.toHaveBeenCalled();
+    } finally {
+      process.env.s3BucketName = original;
+    }
   });
 });

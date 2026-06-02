@@ -16,9 +16,9 @@ describe("parseKey", () => {
   });
 
   it("A.2: missing userId — error names userId", () => {
-    expect(() => parseKey("/groupA/doc-550e8400-e29b-41d4-a716-446655440000.pdf")).toThrow(
-      /userId/,
-    );
+    expect(() =>
+      parseKey("/groupA/doc-550e8400-e29b-41d4-a716-446655440000.pdf"),
+    ).toThrow(/userId/);
     expect(() =>
       parseKey("/groupA/doc-550e8400-e29b-41d4-a716-446655440000.pdf"),
     ).not.toThrow(/documentGroupId/);
@@ -50,9 +50,7 @@ describe("parseKey", () => {
 
   it("A.7: non-.pdf tail after UUID throws (regex anchored)", () => {
     expect(() =>
-      parseKey(
-        "user1/groupA/doc-550e8400-e29b-41d4-a716-446655440000.pdf.bak",
-      ),
+      parseKey("user1/groupA/doc-550e8400-e29b-41d4-a716-446655440000.pdf.bak"),
     ).toThrow(/documentUuid/);
   });
 });

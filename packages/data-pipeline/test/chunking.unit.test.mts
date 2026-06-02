@@ -59,8 +59,6 @@ describe("splitText", () => {
     const lastChunk = chunks[chunks.length - 1];
     const allText = text;
     expect(allText.endsWith(lastChunk)).toBe(true);
-    expect(lastChunk[lastChunk.length - 1]).toBe(
-      allText[allText.length - 1],
-    );
+    expect(lastChunk[lastChunk.length - 1]).toBe(allText[allText.length - 1]);
   });
 });

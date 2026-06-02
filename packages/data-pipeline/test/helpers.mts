@@ -1,15 +1,7 @@
 import { PutEventsCommand } from "@aws-sdk/client-eventbridge";
 import type { AwsClientStub } from "aws-sdk-client-mock";
 import type { EventBridgeClient } from "@aws-sdk/client-eventbridge";
-
-interface S3EventBridgeEvent {
-  source: string;
-  "detail-type": string;
-  detail: {
-    bucket: { name: string };
-    object: { key: string };
-  };
-}
+import type { S3EventBridgeEvent } from "../lib/index.mts";
 
 export function makeEvent(
   rawKey: string,

@@ -1,0 +1,105 @@
+name: Test — data-pipeline
+
+on:
+  pull_request:
+    paths:
+      - "packages/data-pipeline/**"
+      - ".github/workflows/test.yml"
+      - "yarn.lock"
+      - "package.json"
+      - ".yarnrc.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/data-pipeline/**"
+      - ".github/workflows/test.yml"
+      - "yarn.lock"
+      - "package.json"
+      - ".yarnrc.yml"
+
+jobs:
+  unit:
+    name: Unit tests + coverage
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Corepack must be enabled before setup-node resolves the yarn cache,
+      # otherwise `cache: yarn` invokes the wrong (classic) yarn.
+      - run: corepack enable
+
+      - name: Node 22 + yarn cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      # Install at the workspace root against the single root lockfile; running
+      # install inside packages/data-pipeline would not match the monorepo.
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Run via yarn from the package so the PnP loader is active.
+      - name: Run unit tests + coverage
+        working-directory: packages/data-pipeline
+        run: yarn test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: packages/data-pipeline/coverage/lcov.info
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: packages/data-pipeline/coverage/
+
+      - name: Coverage summary
+        if: always()
+        working-directory: packages/data-pipeline
+        run: |
+          echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const s = require('./coverage/coverage-summary.json').total;
+              const pct = (v) => v.pct.toFixed(1) + '%';
+              console.log('| Category    | Coverage |');
+              console.log('|-------------|----------|');
+              console.log('| Lines       | ' + pct(s.lines) + ' |');
+              console.log('| Statements  | ' + pct(s.statements) + ' |');
+              console.log('| Functions   | ' + pct(s.functions) + ' |');
+              console.log('| Branches    | ' + pct(s.branches) + ' |');
+            " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_coverage-summary.json not found_" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  integration:
+    name: Integration tests (LocalStack)
+    runs-on: ubuntu-24.04-arm
+    # Non-blocking until the LocalStack/testcontainers path is proven stable.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: corepack enable
+
+      - name: Node 22 + yarn cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run integration tests
+        working-directory: packages/data-pipeline
+        run: yarn test:integration
