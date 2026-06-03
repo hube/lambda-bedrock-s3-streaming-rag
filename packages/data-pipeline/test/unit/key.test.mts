@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { __testables } from "../lib/index.mts";
+import { __testables } from "../../lib/index.mts";
 
 const { parseKey } = __testables;
 

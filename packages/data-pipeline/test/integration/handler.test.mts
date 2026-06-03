@@ -20,9 +20,9 @@ import {
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
 import * as lancedb from "@lancedb/lancedb";
-import { handler } from "../lib/index.mts";
-import { makeEvent } from "./helpers.mts";
-import { dockerAvailable } from "./setup.int.mts";
+import { handler } from "../../lib/index.mts";
+import { makeEvent } from "../helpers.mts";
+import { dockerAvailable } from "./setup.mts";
 
 // Embeddings and pdf-parse are always mocked (paid / native deps).
 vi.mock("@langchain/aws", () => ({
@@ -76,9 +76,9 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
     process.env.AWS_ACCESS_KEY_ID = "test";
     process.env.AWS_SECRET_ACCESS_KEY = "test";
     process.env.AWS_REGION = REGION;
-    process.env.s3BucketName = VECTOR_BUCKET;
-    process.env.region = REGION;
-    process.env.lanceDbTable = "vectorstore";
+    process.env.vectorDbS3BucketName = VECTOR_BUCKET;
+    process.env.awsRegion = REGION;
+    process.env.lanceDbTableName = "vectorstore";
     process.env.eventBusName = EVENT_BUS;
 
     const clientCfg = {

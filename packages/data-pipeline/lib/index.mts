@@ -17,9 +17,9 @@ import { Readable } from "stream";
 // (no safe fallback); a string default = optional. requireConfig() and cfg()
 // both read this map, so a new mandatory var is one edit here rather than two.
 const ENV_DEFAULTS = {
-  s3BucketName: undefined,
-  region: "us-east-1",
-  lanceDbTable: "vectorstore",
+  vectorDbS3BucketName: undefined,
+  awsRegion: "us-east-1",
+  lanceDbTableName: "vectorstore",
   eventBusName: "default",
 } as const;
 
@@ -35,9 +35,9 @@ function requireConfig(): void {
 }
 
 const cfg = () => ({
-  bucket: process.env.s3BucketName!,
-  region: process.env.region ?? ENV_DEFAULTS.region,
-  table: process.env.lanceDbTable ?? ENV_DEFAULTS.lanceDbTable,
+  bucket: process.env.vectorDbS3BucketName!,
+  region: process.env.awsRegion ?? ENV_DEFAULTS.awsRegion,
+  table: process.env.lanceDbTableName ?? ENV_DEFAULTS.lanceDbTableName,
   eventBus: process.env.eventBusName ?? ENV_DEFAULTS.eventBusName,
 });
 

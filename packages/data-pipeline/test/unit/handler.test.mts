@@ -9,12 +9,12 @@ import { Readable } from "stream";
 import * as lancedb from "@lancedb/lancedb";
 import { PDFParse } from "pdf-parse";
 import { BedrockEmbeddings } from "@langchain/aws";
-import { handler } from "../lib/index.mts";
+import { handler } from "../../lib/index.mts";
 import {
   makeEvent,
   getPublishedDetail,
   getPublishedEntry,
-} from "./helpers.mts";
+} from "../helpers.mts";
 
 vi.mock("@lancedb/lancedb", () => ({ connect: vi.fn() }));
 vi.mock("pdf-parse", () => ({ PDFParse: vi.fn() }));
@@ -335,9 +335,9 @@ describe("handler — EventBridge event shape", () => {
 });
 
 describe("handler — missing env var", () => {
-  it("C.16: missing s3BucketName fails fast via the handler's own config check", async () => {
-    const original = process.env.s3BucketName;
-    delete process.env.s3BucketName;
+  it("C.16: missing vectorDbS3BucketName fails fast via the handler's own config check", async () => {
+    const original = process.env.vectorDbS3BucketName;
+    delete process.env.vectorDbS3BucketName;
 
     try {
       const result = await handler(makeEvent(VALID_KEY));
@@ -348,13 +348,13 @@ describe("handler — missing env var", () => {
       const detail = getPublishedDetail(ebMock);
       expect(detail.status).toBe("PROCESSING_FAILED");
       expect(String(detail.statusDetail)).toContain(
-        "Missing required env var(s): s3BucketName",
+        "Missing required env var(s): vectorDbS3BucketName",
       );
 
       // Fail-fast: no S3/LanceDB work is attempted with invalid config.
       expect(lancedb.connect).not.toHaveBeenCalled();
     } finally {
-      process.env.s3BucketName = original;
+      process.env.vectorDbS3BucketName = original;
     }
   });
 });

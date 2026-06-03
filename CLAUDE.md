@@ -48,13 +48,22 @@ So ingestion is **S3 → EventBridge (inbound) → Lambda → LanceDB on S3**. T
 
 ## Lambda Environment Variables
 
-Both functions read:
+`rag-query-function` reads:
 
 | Variable       | Source                   |
 | -------------- | ------------------------ |
 | `s3BucketName` | Vector-DB S3 bucket name |
 | `region`       | AWS region               |
 | `lanceDbTable` | `vectorstore`            |
+
+`data-pipeline` reads:
+
+| Variable                | Source                   |
+| ----------------------- | ------------------------ |
+| `vectorDbS3BucketName`  | Vector-DB S3 bucket name |
+| `awsRegion`             | AWS region               |
+| `lanceDbTableName`      | `vectorstore`            |
+| `eventBusName`          | `default`                |
 
 ## Deploy with CDK
 
@@ -112,9 +121,10 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 
 ## Important Notes
 
+- Confirm the state of the filesystem and git repo prior to making any assumptions about the code
 - The `@lancedb` / `pdf-parse` packages contain native binaries; CDK bundling compiles/installs them for the Lambda Linux runtime (locally if Node is available, otherwise via Docker).
 - LanceDB connects directly to S3 at runtime — no EFS or local disk needed.
-- The LanceDB table name is always `vectorstore` (env var `lanceDbTable`).
+- The LanceDB table name is always `vectorstore` (env var `lanceDbTable` in the query function, `lanceDbTableName` in the data-pipeline).
 - The ingestion Lambda needs the public `napi-rs-canvas` Lambda layer; its version is region-specific (see the `CfnMapping` in the pipeline stack). Deploying to an unlisted region fails at CloudFormation time.
 
 ## Code Comments

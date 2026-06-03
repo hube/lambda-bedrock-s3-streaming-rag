@@ -7,16 +7,16 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["test/**/*.unit.test.mts"],
-          setupFiles: ["test/setup.unit.mts"],
+          include: ["test/unit/**/*.test.mts"],
+          setupFiles: ["test/unit/setup.mts"],
           environment: "node",
         },
       },
       {
         test: {
           name: "int",
-          include: ["test/**/*.int.test.mts"],
-          setupFiles: ["test/setup.int.mts"],
+          include: ["test/integration/**/*.test.mts"],
+          setupFiles: ["test/integration/setup.mts"],
           environment: "node",
           testTimeout: 60_000,
           hookTimeout: 120_000,
@@ -27,7 +27,6 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov", "json-summary"],
       include: ["lib/**/*.mts"],
-      exclude: ["scripts/**", "dist/**", "deploy/**", "test/**", "**/*.d.ts"],
       thresholds: {
         lines: 85,
         functions: 90,
