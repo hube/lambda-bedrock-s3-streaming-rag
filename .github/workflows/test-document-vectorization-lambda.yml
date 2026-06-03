@@ -54,14 +54,8 @@ jobs:
         with:
           file: packages/data-pipeline/coverage/cobertura-coverage.xml
           language: TypeScript
-          label: code-coverage
+          label: code-coverage/document-vectorization-lambda
           fail-on-error: false
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: packages/data-pipeline/coverage/
 
       - name: Coverage summary
         working-directory: packages/data-pipeline

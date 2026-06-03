@@ -48,15 +48,12 @@ describe("parseKey", () => {
     expect(result.documentUuid).toBe("550E8400-E29B-41D4-A716-446655440000");
   });
 
-  it("A.8: two-segment key parses with UUID filename as documentGroupId", () => {
-    const result = parseKey(
-      "user1OrGroupA/document-550e8400-e29b-41d4-a716-446655440000.pdf",
-    );
-    expect(result.userId).toBe("user1OrGroupA");
-    expect(result.documentGroupId).toBe(
-      "document-550e8400-e29b-41d4-a716-446655440000.pdf",
-    );
-    expect(result.documentUuid).toBe("550e8400-e29b-41d4-a716-446655440000");
+  it("A.8: two-segment key throws — no documentGroupId segment", () => {
+    expect(() =>
+      parseKey(
+        "user1OrGroupA/document-550e8400-e29b-41d4-a716-446655440000.pdf",
+      ),
+    ).toThrow(/documentGroupId/);
   });
 
   it("A.7: non-.pdf tail after UUID throws (regex anchored)", () => {

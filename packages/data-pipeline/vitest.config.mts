@@ -26,7 +26,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      reporter: ["text", "html", "lcov", "cobertura", "json-summary"],
+      reporter: ["text", "html", "cobertura", "json-summary"],
       include: ["lib/**/*.mts"],
       thresholds: {
         lines: 85,

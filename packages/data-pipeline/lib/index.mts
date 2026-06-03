@@ -78,14 +78,16 @@ interface ParsedKey {
 // caller surfaces that as a PROCESSING_FAILED event rather than letting a
 // malformed key pass downstream.
 function parseKey(key: string): ParsedKey {
-  const [userId, documentGroupId] = key.split("/");
+  const parts = key.split("/");
+  const [userId, documentGroupId] = parts;
   const documentUuid = key.match(UUID_RE)?.[1];
 
   const missing: string[] = [];
   if (!userId) missing.push("userId");
-  if (!documentGroupId) missing.push("documentGroupId");
+  // Key must follow userId/documentGroupId/filename — a two-segment key has no groupId.
+  if (!documentGroupId || parts.length < 3) missing.push("documentGroupId");
   if (!documentUuid) missing.push("documentUuid");
-  if (!userId || !documentGroupId || !documentUuid) {
+  if (!userId || !documentGroupId || parts.length < 3 || !documentUuid) {
     throw new Error(
       `Could not parse [${missing.join(", ")}] from S3 key: ${key}`,
     );

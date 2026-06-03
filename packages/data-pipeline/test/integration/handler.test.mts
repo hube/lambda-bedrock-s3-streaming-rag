@@ -46,18 +46,6 @@ const VECTOR_BUCKET = "test-vector-bucket";
 const UPLOAD_BUCKET = "test-unprocessed-bucket";
 const EVENT_BUS = "test-bus";
 
-// Unique user/group prefixes per test to prevent cross-test LanceDB state sharing.
-const KEY_D1 =
-  "user_d1/group_d1/document-550e8400-e29b-41d4-a716-446655440001.pdf";
-const KEY_D2A =
-  "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440002.pdf";
-const KEY_D2B =
-  "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440003.pdf";
-const KEY_D3 =
-  "user_d3/group_d3/document-550e8400-e29b-41d4-a716-446655440004.pdf";
-const KEY_D5 =
-  "user_d5/group_d5/document-550e8400-e29b-41d4-a716-446655440005.pdf";
-
 describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   let container: StartedTestContainer;
   let s3: S3Client;
@@ -157,43 +145,52 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   });
 
   it("D.1: first ingest creates LanceDB table and publishes PROCESSING_COMPLETED", async () => {
-    await putKey(KEY_D1);
+    const key =
+      "user_d1/group_d1/document-550e8400-e29b-41d4-a716-446655440001.pdf";
+    await putKey(key);
 
-    const result = await handler(makeEvent(KEY_D1, UPLOAD_BUCKET));
+    const result = await handler(makeEvent(key, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
 
     const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d1/group_d1/`);
     expect(await db.tableNames()).toContain("vectorstore");
     const rows = await (await db.openTable("vectorstore")).query().toArray();
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].sourceS3ObjectKey).toBe(KEY_D1);
+    expect(rows[0].sourceS3ObjectKey).toBe(key);
   });
 
   it("D.2: second key in same prefix appends to existing table (no re-create)", async () => {
-    await putKey(KEY_D2A);
-    await handler(makeEvent(KEY_D2A, UPLOAD_BUCKET));
+    const keyA =
+      "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440002.pdf";
+    const keyB =
+      "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440003.pdf";
 
-    await putKey(KEY_D2B);
-    const result = await handler(makeEvent(KEY_D2B, UPLOAD_BUCKET));
+    await putKey(keyA);
+    await handler(makeEvent(keyA, UPLOAD_BUCKET));
+
+    await putKey(keyB);
+    const result = await handler(makeEvent(keyB, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
 
     const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d2/group_d2/`);
     const keys = (
       await (await db.openTable("vectorstore")).query().toArray()
     ).map((r) => r.sourceS3ObjectKey as string);
-    expect(keys).toContain(KEY_D2A);
-    expect(keys).toContain(KEY_D2B);
+    expect(keys).toContain(keyA);
+    expect(keys).toContain(keyB);
   });
 
   it("D.3: duplicate event is idempotent — row count unchanged", async () => {
-    await putKey(KEY_D3);
-    await handler(makeEvent(KEY_D3, UPLOAD_BUCKET));
+    const key =
+      "user_d3/group_d3/document-550e8400-e29b-41d4-a716-446655440004.pdf";
+    await putKey(key);
+    await handler(makeEvent(key, UPLOAD_BUCKET));
 
     const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d3/group_d3/`);
     const table = await db.openTable("vectorstore");
     const rowsBefore = (await table.query().toArray()).length;
 
-    const result = await handler(makeEvent(KEY_D3, UPLOAD_BUCKET));
+    const result = await handler(makeEvent(key, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
     expect(result.body).toContain("Duplicate");
     expect((await table.query().toArray()).length).toBe(rowsBefore);
@@ -211,10 +208,12 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   });
 
   it("D.5: published event matches DocumentProcessed schema contract", async () => {
-    await putKey(KEY_D5);
-    await handler(makeEvent(KEY_D5, UPLOAD_BUCKET));
+    const key =
+      "user_d5/group_d5/document-550e8400-e29b-41d4-a716-446655440005.pdf";
+    await putKey(key);
+    await handler(makeEvent(key, UPLOAD_BUCKET));
 
-    // EventBridge→SQS routing is async. Filter by KEY_D5 so this test is
+    // EventBridge→SQS routing is async. Filter by key so this test is
     // independent of events published by other tests in the shared queue.
     let event: Record<string, unknown> | undefined;
     const deadline = Date.now() + 15_000;
@@ -229,10 +228,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
       for (const msg of res.Messages ?? []) {
         const detail = (JSON.parse(msg.Body!) as { detail: unknown })
           .detail as Record<string, unknown>;
-        if (
-          detail.status === "PROCESSING_COMPLETED" &&
-          detail.s3Key === KEY_D5
-        ) {
+        if (detail.status === "PROCESSING_COMPLETED" && detail.s3Key === key) {
           event = detail;
           break;
         }
@@ -241,7 +237,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
 
     expect(event).toBeDefined();
     expect(event!.version).toBe("1");
-    expect(event!.s3Key).toBe(KEY_D5);
+    expect(event!.s3Key).toBe(key);
     expect(typeof event!.processedAt).toBe("string");
     expect(new Date(event!.processedAt as string).toISOString()).toBe(
       event!.processedAt,
