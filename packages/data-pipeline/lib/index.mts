@@ -316,8 +316,7 @@ export const handler = async (
     const tableNames = await db.tableNames();
 
     // Idempotency: a redelivered event for an already-ingested key does no work
-    // and publishes no event. openedTable is carried forward so ingest can
-    // reuse it on the append path without a second db.openTable() call.
+    // and publishes no event.
     const { isDuplicate, openedTable } = await alreadyProcessed(
       db,
       tableNames,
