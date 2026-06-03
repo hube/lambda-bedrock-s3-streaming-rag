@@ -15,3 +15,9 @@
 packages/cdk/cdk.out/
 packages/data-pipeline/docs/
 packages/*/dist/
+
+# Test coverage
+packages/*/coverage/
+
+# Vitest cache
+packages/*/.vitest-cache/

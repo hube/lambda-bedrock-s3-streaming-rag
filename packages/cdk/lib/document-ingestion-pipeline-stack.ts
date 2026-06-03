@@ -126,9 +126,9 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         memorySize: 512,
         architecture: lambda.Architecture.X86_64,
         environment: {
-          s3BucketName: this.vectorDbBucket.bucketName,
-          region: this.region,
-          lanceDbTable: "vectorstore",
+          vectorDbS3BucketName: this.vectorDbBucket.bucketName,
+          awsRegion: this.region,
+          lanceDbTableName: "vectorstore",
           eventBusName: "default",
         },
         tracing: lambda.Tracing.ACTIVE,

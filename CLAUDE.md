@@ -48,13 +48,22 @@ So ingestion is **S3 → EventBridge (inbound) → Lambda → LanceDB on S3**. T
 
 ## Lambda Environment Variables
 
-Both functions read:
+`rag-query-function` reads:
 
 | Variable       | Source                   |
 | -------------- | ------------------------ |
 | `s3BucketName` | Vector-DB S3 bucket name |
 | `region`       | AWS region               |
 | `lanceDbTable` | `vectorstore`            |
+
+`data-pipeline` reads:
+
+| Variable                | Source                   |
+| ----------------------- | ------------------------ |
+| `vectorDbS3BucketName`  | Vector-DB S3 bucket name |
+| `awsRegion`             | AWS region               |
+| `lanceDbTableName`      | `vectorstore`            |
+| `eventBusName`          | `default`                |
 
 ## Deploy with CDK
 
@@ -112,15 +121,21 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 
 ## Important Notes
 
+- Confirm the state of the filesystem and git repo prior to making any assumptions about the code
 - The `@lancedb` / `pdf-parse` packages contain native binaries; CDK bundling compiles/installs them for the Lambda Linux runtime (locally if Node is available, otherwise via Docker).
 - LanceDB connects directly to S3 at runtime — no EFS or local disk needed.
-- The LanceDB table name is always `vectorstore` (env var `lanceDbTable`).
+- The LanceDB table name is always `vectorstore` (env var `lanceDbTable` in the query function, `lanceDbTableName` in the data-pipeline).
 - The ingestion Lambda needs the public `napi-rs-canvas` Lambda layer; its version is region-specific (see the `CfnMapping` in the pipeline stack). Deploying to an unlisted region fails at CloudFormation time.
 
 ## Code Comments
 
 - Keep comments minimal and focused on _why_, not _what_. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
 - Don't restate the same rationale in more than one place. When a non-obvious choice (such as importing the worker queue by ARN to avoid a cross-stack dependency cycle) is already explained where it's made, don't repeat that explanation at each related call site — one comment at the source is enough.
+
+## Responding to PR Review Comments
+
+- **Fetch all comment threads before replying to any.** The GitHub API default page size is 30; a PR with many threads silently truncates. Always use `per_page=100` (or paginate) when listing review comments: `gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100"`. Replying to a partial list leaves threads unanswered and requires another round.
+- **Reply in the thread, not as a top-level PR comment.** Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` with the original comment's ID as `{id}`.
 
 ## Verifying Before You Commit
 
