@@ -122,6 +122,8 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 ## Important Notes
 
 - Confirm the state of the filesystem and git repo prior to making any assumptions about the code
+- When adding new dependencies, check for and add the latest versions of those dependencies
+- Clearly distinguish between guesses or hypotheses and verified claims. Describe how verified claims were verified
 - The `@lancedb` / `pdf-parse` packages contain native binaries; CDK bundling compiles/installs them for the Lambda Linux runtime (locally if Node is available, otherwise via Docker).
 - LanceDB connects directly to S3 at runtime — no EFS or local disk needed.
 - The LanceDB table name is always `vectorstore` (env var `lanceDbTable` in the query function, `lanceDbTableName` in the data-pipeline).
@@ -136,6 +138,7 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 
 - **Fetch all comment threads before replying to any.** The GitHub API default page size is 30; a PR with many threads silently truncates. Always use `per_page=100` (or paginate) when listing review comments: `gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100"`. Replying to a partial list leaves threads unanswered and requires another round.
 - **Reply in the thread, not as a top-level PR comment.** Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` with the original comment's ID as `{id}`.
+- Provide a summary of changes as a top-level PR comment
 
 ## Verifying Before You Commit
 
