@@ -157,7 +157,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
 
   afterEach(async () => {
     // Explicit teardown: delete all S3 objects written by this test and purge
-    // SQS so events don't bleed into the next test's D.5 poll.
+    // SQS so events don't bleed into subsequent tests.
     for (const bucket of [UPLOAD_BUCKET, VECTOR_BUCKET]) {
       const listed = await s3.send(
         new ListObjectsV2Command({ Bucket: bucket }),
