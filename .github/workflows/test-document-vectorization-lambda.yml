@@ -1,10 +1,10 @@
-name: Test — data-pipeline
+name: Test - document vectorization Lambda
 
 on:
   pull_request:
     paths:
       - "packages/data-pipeline/**"
-      - ".github/workflows/test.yml"
+      - ".github/workflows/test-document-vectorization-lambda.yml"
       - "yarn.lock"
       - "package.json"
       - ".yarnrc.yml"
@@ -13,7 +13,7 @@ on:
       - main
     paths:
       - "packages/data-pipeline/**"
-      - ".github/workflows/test.yml"
+      - ".github/workflows/test-document-vectorization-lambda.yml"
       - "yarn.lock"
       - "package.json"
       - ".yarnrc.yml"
@@ -22,6 +22,8 @@ jobs:
   unit:
     name: Unit tests + coverage
     runs-on: ubuntu-24.04-arm
+    permissions:
+      code-quality: write
 
     steps:
       - uses: actions/checkout@v6
@@ -47,11 +49,13 @@ jobs:
         working-directory: packages/data-pipeline
         run: yarn test:coverage
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+      - name: Upload coverage
+        uses: actions/upload-code-coverage@v1
         with:
-          files: packages/data-pipeline/coverage/lcov.info
-          fail_ci_if_error: false
+          file: packages/data-pipeline/coverage/cobertura-coverage.xml
+          language: TypeScript
+          label: code-coverage
+          fail-on-error: false
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
@@ -60,7 +64,6 @@ jobs:
           path: packages/data-pipeline/coverage/
 
       - name: Coverage summary
-        if: always()
         working-directory: packages/data-pipeline
         run: |
           echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
@@ -82,8 +85,6 @@ jobs:
   integration:
     name: Integration tests (LocalStack)
     runs-on: ubuntu-24.04-arm
-    # Non-blocking until the LocalStack/testcontainers path is proven stable.
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v6
@@ -99,9 +100,6 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
-
-      - name: Verify Docker is available
-        run: docker info
 
       - name: Pre-pull LocalStack image
         run: docker pull localstack/localstack:3

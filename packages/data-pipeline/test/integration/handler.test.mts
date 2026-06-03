@@ -7,7 +7,6 @@ import {
 import {
   CreateQueueCommand,
   GetQueueAttributesCommand,
-  type Message,
   ReceiveMessageCommand,
   SQSClient,
 } from "@aws-sdk/client-sqs";
@@ -24,7 +23,8 @@ import { handler } from "../../lib/index.mts";
 import { makeEvent } from "../helpers.mts";
 import { dockerAvailable } from "./setup.mts";
 
-// Embeddings and pdf-parse are always mocked (paid / native deps).
+// Embeddings and pdf-parse are always mocked: Bedrock costs money and the
+// native canvas dependency (napi-rs-canvas) is not available in CI.
 vi.mock("@langchain/aws", () => ({
   BedrockEmbeddings: vi.fn().mockImplementation(function () {
     return {
@@ -45,13 +45,34 @@ const REGION = "us-east-1";
 const VECTOR_BUCKET = "test-vector-bucket";
 const UPLOAD_BUCKET = "test-unprocessed-bucket";
 const EVENT_BUS = "test-bus";
-const KEY = "user1/groupA/document-550e8400-e29b-41d4-a716-446655440000.pdf";
+
+// Unique user/group prefixes per test to prevent cross-test LanceDB state sharing.
+const KEY_D1 =
+  "user_d1/group_d1/document-550e8400-e29b-41d4-a716-446655440001.pdf";
+const KEY_D2A =
+  "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440002.pdf";
+const KEY_D2B =
+  "user_d2/group_d2/document-550e8400-e29b-41d4-a716-446655440003.pdf";
+const KEY_D3 =
+  "user_d3/group_d3/document-550e8400-e29b-41d4-a716-446655440004.pdf";
+const KEY_D5 =
+  "user_d5/group_d5/document-550e8400-e29b-41d4-a716-446655440005.pdf";
 
 describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   let container: StartedTestContainer;
   let s3: S3Client;
   let sqs: SQSClient;
   let sqsQueueUrl: string;
+
+  async function putKey(key: string) {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: UPLOAD_BUCKET,
+        Key: key,
+        Body: Buffer.from("dummy pdf bytes"),
+      }),
+    );
+  }
 
   beforeAll(async () => {
     container = await new GenericContainer("localstack/localstack:3")
@@ -136,99 +157,68 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
   });
 
   it("D.1: first ingest creates LanceDB table and publishes PROCESSING_COMPLETED", async () => {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: UPLOAD_BUCKET,
-        Key: KEY,
-        Body: Buffer.from("dummy pdf bytes"),
-      }),
-    );
+    await putKey(KEY_D1);
 
-    const result = await handler(makeEvent(KEY, UPLOAD_BUCKET));
+    const result = await handler(makeEvent(KEY_D1, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
 
-    // Verify LanceDB table was created by re-reading it.
-    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user1/groupA/`);
-    const tableNames = await db.tableNames();
-    expect(tableNames).toContain("vectorstore");
-
-    const table = await db.openTable("vectorstore");
-    const rows = await table.query().toArray();
+    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d1/group_d1/`);
+    expect(await db.tableNames()).toContain("vectorstore");
+    const rows = await (await db.openTable("vectorstore")).query().toArray();
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].sourceS3ObjectKey).toBe(KEY);
+    expect(rows[0].sourceS3ObjectKey).toBe(KEY_D1);
   });
 
-  it("D.2: second key appends to existing table (no re-create)", async () => {
-    const key2 =
-      "user1/groupA/document-660e8400-e29b-41d4-a716-446655440000.pdf";
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: UPLOAD_BUCKET,
-        Key: key2,
-        Body: Buffer.from("another pdf"),
-      }),
-    );
+  it("D.2: second key in same prefix appends to existing table (no re-create)", async () => {
+    await putKey(KEY_D2A);
+    await handler(makeEvent(KEY_D2A, UPLOAD_BUCKET));
 
-    const result = await handler(makeEvent(key2, UPLOAD_BUCKET));
+    await putKey(KEY_D2B);
+    const result = await handler(makeEvent(KEY_D2B, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
 
-    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user1/groupA/`);
-    const table = await db.openTable("vectorstore");
-    const rows = await table.query().toArray();
-    // Both documents should be present.
-    const keys = rows.map((r) => r.sourceS3ObjectKey as string);
-    expect(keys).toContain(KEY);
-    expect(keys).toContain(key2);
+    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d2/group_d2/`);
+    const keys = (
+      await (await db.openTable("vectorstore")).query().toArray()
+    ).map((r) => r.sourceS3ObjectKey as string);
+    expect(keys).toContain(KEY_D2A);
+    expect(keys).toContain(KEY_D2B);
   });
 
-  it("D.3: duplicate event is idempotent — row count unchanged, no new event", async () => {
-    // Explicit precondition: this test depends on D.1 having ingested KEY. Assert
-    // it directly so a failure here names the broken dependency rather than
-    // silently exercising wrong state (e.g. treating KEY as new on a missed D.1).
-    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user1/groupA/`);
-    const table = await db.openTable("vectorstore");
-    const seedRows = await table
-      .query()
-      .where(`sourceS3ObjectKey = '${KEY}'`)
-      .limit(1)
-      .toArray();
-    expect(
-      seedRows.length,
-      "Precondition: D.1 must have ingested KEY before D.3 runs",
-    ).toBeGreaterThan(0);
+  it("D.3: duplicate event is idempotent — row count unchanged", async () => {
+    await putKey(KEY_D3);
+    await handler(makeEvent(KEY_D3, UPLOAD_BUCKET));
 
+    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d3/group_d3/`);
+    const table = await db.openTable("vectorstore");
     const rowsBefore = (await table.query().toArray()).length;
 
-    const result = await handler(makeEvent(KEY, UPLOAD_BUCKET));
+    const result = await handler(makeEvent(KEY_D3, UPLOAD_BUCKET));
     expect(result.statusCode).toBe(200);
     expect(result.body).toContain("Duplicate");
-
-    const rowsAfter = (await table.query().toArray()).length;
-    expect(rowsAfter).toBe(rowsBefore);
+    expect((await table.query().toArray()).length).toBe(rowsBefore);
   });
 
   it("D.4: non-PDF key returns 200 without writing to LanceDB", async () => {
-    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user1/groupA/`);
-    const table = await db.openTable("vectorstore");
-    const rowsBefore = (await table.query().toArray()).length;
-
     const result = await handler(
-      makeEvent("user1/groupA/image.png", UPLOAD_BUCKET),
+      makeEvent("user_d4/group_d4/image.png", UPLOAD_BUCKET),
     );
     expect(result.statusCode).toBe(200);
     expect(result.body).toBe("No documents ingested.");
 
-    const rowsAfter = (await table.query().toArray()).length;
-    expect(rowsAfter).toBe(rowsBefore);
+    const db = await lancedb.connect(`s3://${VECTOR_BUCKET}/user_d4/group_d4/`);
+    expect(await db.tableNames()).not.toContain("vectorstore");
   });
 
   it("D.5: published event matches DocumentProcessed schema contract", async () => {
-    // EventBridge→SQS routing is asynchronous inside LocalStack; a single
-    // long-poll may return before delivery completes. Poll with a deadline so
-    // the assertion is deterministic regardless of LocalStack scheduling.
-    let received: Message[] = [];
+    await putKey(KEY_D5);
+    await handler(makeEvent(KEY_D5, UPLOAD_BUCKET));
+
+    // EventBridge→SQS routing is async. Filter by KEY_D5 so this test is
+    // independent of events published by other tests in the shared queue.
+    let event: Record<string, unknown> | undefined;
     const deadline = Date.now() + 15_000;
-    while (received.length === 0 && Date.now() < deadline) {
+    while (!event && Date.now() < deadline) {
       const res = await sqs.send(
         new ReceiveMessageCommand({
           QueueUrl: sqsQueueUrl,
@@ -236,22 +226,25 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
           WaitTimeSeconds: 2,
         }),
       );
-      received = res.Messages ?? [];
+      for (const msg of res.Messages ?? []) {
+        const detail = (JSON.parse(msg.Body!) as { detail: unknown })
+          .detail as Record<string, unknown>;
+        if (
+          detail.status === "PROCESSING_COMPLETED" &&
+          detail.s3Key === KEY_D5
+        ) {
+          event = detail;
+          break;
+        }
+      }
     }
 
-    expect(received.length).toBeGreaterThan(0);
-    const bodies = received.map((m) => {
-      const envelope = JSON.parse(m.Body!) as { detail: unknown };
-      return envelope.detail as Record<string, unknown>;
-    });
-
-    const completed = bodies.find((d) => d.status === "PROCESSING_COMPLETED");
-    expect(completed).toBeDefined();
-    expect(completed!.version).toBe("1");
-    expect(completed!.s3Key).toBe(KEY);
-    expect(typeof completed!.processedAt).toBe("string");
-    expect(new Date(completed!.processedAt as string).toISOString()).toBe(
-      completed!.processedAt,
+    expect(event).toBeDefined();
+    expect(event!.version).toBe("1");
+    expect(event!.s3Key).toBe(KEY_D5);
+    expect(typeof event!.processedAt).toBe("string");
+    expect(new Date(event!.processedAt as string).toISOString()).toBe(
+      event!.processedAt,
     );
   });
 });

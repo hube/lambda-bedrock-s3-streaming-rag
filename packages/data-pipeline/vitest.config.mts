@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   cacheDir: ".vitest-cache",
   test: {
+    sequence: { shuffle: true },
     projects: [
       {
         test: {
@@ -25,7 +26,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      reporter: ["text", "html", "lcov", "json-summary"],
+      reporter: ["text", "html", "lcov", "cobertura", "json-summary"],
       include: ["lib/**/*.mts"],
       thresholds: {
         lines: 85,

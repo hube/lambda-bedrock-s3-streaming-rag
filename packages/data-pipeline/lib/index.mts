@@ -17,14 +17,13 @@ import { Readable } from "stream";
 // (no safe fallback); a string default = optional. requireConfig() and cfg()
 // both read this map, so a new mandatory var is one edit here rather than two.
 const ENV_DEFAULTS = {
+  // required — an unset bucket name leaks as s3://undefined/... in LanceDB
   vectorDbS3BucketName: undefined,
   awsRegion: "us-east-1",
   lanceDbTableName: "vectorstore",
   eventBusName: "default",
 } as const;
 
-// s3BucketName has no safe default; an unset value otherwise leaks downstream
-// as an opaque "s3://undefined/..." LanceDB error. Validate at handler entry.
 function requireConfig(): void {
   const missing = (
     Object.keys(ENV_DEFAULTS) as (keyof typeof ENV_DEFAULTS)[]
@@ -35,10 +34,11 @@ function requireConfig(): void {
 }
 
 const cfg = () => ({
-  bucket: process.env.vectorDbS3BucketName!,
-  region: process.env.awsRegion ?? ENV_DEFAULTS.awsRegion,
-  table: process.env.lanceDbTableName ?? ENV_DEFAULTS.lanceDbTableName,
-  eventBus: process.env.eventBusName ?? ENV_DEFAULTS.eventBusName,
+  vectorDbS3BucketName: process.env.vectorDbS3BucketName!,
+  awsRegion: process.env.awsRegion ?? ENV_DEFAULTS.awsRegion,
+  lanceDbTableName:
+    process.env.lanceDbTableName ?? ENV_DEFAULTS.lanceDbTableName,
+  eventBusName: process.env.eventBusName ?? ENV_DEFAULTS.eventBusName,
 });
 
 let _s3: S3Client | undefined;
@@ -47,12 +47,12 @@ let _s3: S3Client | undefined;
 // Production Lambda never sets AWS_ENDPOINT_URL, so this is always false there.
 const s3 = () =>
   (_s3 ??= new S3Client({
-    region: cfg().region,
+    region: cfg().awsRegion,
     forcePathStyle: !!process.env.AWS_ENDPOINT_URL,
   }));
 let _eb: EventBridgeClient | undefined;
 const eventBridge = () =>
-  (_eb ??= new EventBridgeClient({ region: cfg().region }));
+  (_eb ??= new EventBridgeClient({ region: cfg().awsRegion }));
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
@@ -119,7 +119,7 @@ async function publishDocumentProcessed({
     new PutEventsCommand({
       Entries: [
         {
-          EventBusName: cfg().eventBus,
+          EventBusName: cfg().eventBusName,
           Source: EVENT_SOURCE,
           DetailType: DETAIL_TYPE,
           Resources: [`arn:aws:s3:::${bucket}/${key}`],
@@ -180,10 +180,10 @@ async function alreadyProcessed(
   tableNames: string[],
   key: string,
 ): Promise<{ isDuplicate: boolean; openedTable: lancedb.Table | null }> {
-  if (!tableNames.includes(cfg().table)) {
+  if (!tableNames.includes(cfg().lanceDbTableName)) {
     return { isDuplicate: false, openedTable: null };
   }
-  const table = await db.openTable(cfg().table);
+  const table = await db.openTable(cfg().lanceDbTableName);
   // Escape single quotes for the SQL filter expression.
   const escapedKey = key.replace(/'/g, "''");
   const existing = await table
@@ -209,10 +209,10 @@ async function ingest(
   console.log(`Ingesting ${chunks.length} from ${sourceS3ObjectKey} into a DB`);
 
   const embeddings = new BedrockEmbeddings({
-    region: cfg().region,
+    region: cfg().awsRegion,
     maxRetries: 3,
     clientOptions: {
-      region: cfg().region,
+      region: cfg().awsRegion,
       // Adaptive retries gracefully handles throttling from the server side
       retryMode: "adaptive",
       maxAttempts: 10,
@@ -237,19 +237,22 @@ async function ingest(
 
   // Re-list table names immediately before the write to narrow the race window.
   const freshTableNames = await db.tableNames();
-  console.log(`Searching for ${cfg().table}`);
-  if (freshTableNames.includes(cfg().table)) {
-    console.log(`Found ${cfg().table} in list of table names`);
+  console.log(`Searching for ${cfg().lanceDbTableName}`);
+  if (freshTableNames.includes(cfg().lanceDbTableName)) {
+    console.log(`Found ${cfg().lanceDbTableName} in list of table names`);
     // Reuse the pre-opened handle when available; open it now only if another
     // concurrent invocation created the table after the idempotency check.
-    const table = preOpenedTable ?? (await db.openTable(cfg().table));
-    console.log(`Opened table ${cfg().table}`);
+    const table =
+      preOpenedTable ?? (await db.openTable(cfg().lanceDbTableName));
+    console.log(`Opened table ${cfg().lanceDbTableName}`);
     await table.add(records);
-    console.log(`Added ${records.length} records to table ${cfg().table}`);
+    console.log(
+      `Added ${records.length} records to table ${cfg().lanceDbTableName}`,
+    );
   } else {
-    console.log(`Didn't find ${cfg().table}, creating the table`);
-    await db.createTable(cfg().table, records);
-    console.log(`Finished creating table ${cfg().table}`);
+    console.log(`Didn't find ${cfg().lanceDbTableName}, creating the table`);
+    await db.createTable(cfg().lanceDbTableName, records);
+    console.log(`Finished creating table ${cfg().lanceDbTableName}`);
   }
 
   console.log(`DONE`);
@@ -306,7 +309,7 @@ export const handler = async (
 
     // One connection per document, shared by the idempotency check and write.
     const db = await lancedb.connect(
-      `s3://${cfg().bucket}/${parsed.userId}/${parsed.documentGroupId}/`,
+      `s3://${cfg().vectorDbS3BucketName}/${parsed.userId}/${parsed.documentGroupId}/`,
     );
     const tableNames = await db.tableNames();
 
@@ -362,7 +365,7 @@ export const handler = async (
   // transient PutEvents failure cannot be misreported as PROCESSING_FAILED. If
   // the publish throws here it propagates and EventBridge retries the whole
   // invocation (see the idempotency note in the README/handler docs).
-  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${cfg().bucket}/ table=${cfg().table}`;
+  const msg = `Ingested ${count} chunks from s3://${bucket}/${key} into s3://${cfg().vectorDbS3BucketName}/ table=${cfg().lanceDbTableName}`;
   console.log(msg);
 
   await publishDocumentProcessed({
