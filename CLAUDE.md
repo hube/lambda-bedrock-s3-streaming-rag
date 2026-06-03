@@ -132,6 +132,11 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 - Keep comments minimal and focused on _why_, not _what_. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
 - Don't restate the same rationale in more than one place. When a non-obvious choice (such as importing the worker queue by ARN to avoid a cross-stack dependency cycle) is already explained where it's made, don't repeat that explanation at each related call site — one comment at the source is enough.
 
+## Responding to PR Review Comments
+
+- **Fetch all comment threads before replying to any.** The GitHub API default page size is 30; a PR with many threads silently truncates. Always use `per_page=100` (or paginate) when listing review comments: `gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100"`. Replying to a partial list leaves threads unanswered and requires another round.
+- **Reply in the thread, not as a top-level PR comment.** Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` with the original comment's ID as `{id}`.
+
 ## Verifying Before You Commit
 
 - **Run the checks before committing or pushing, not after.** For Lambda code (`packages/data-pipeline`, `packages/rag-query-function`): `yarn typecheck`, `yarn lint`, `yarn format:check`, and `yarn build`. For CDK changes (`packages/cdk`): `yarn build` and `yarn cdk synth --all` (must succeed with no dependency cycle). A change that doesn't compile must never reach a commit.
