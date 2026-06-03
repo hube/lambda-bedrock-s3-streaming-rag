@@ -1,12 +1,23 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  afterEach,
+} from "vitest";
 import {
   CreateBucketCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import {
   CreateQueueCommand,
   GetQueueAttributesCommand,
+  PurgeQueueCommand,
   ReceiveMessageCommand,
   SQSClient,
 } from "@aws-sdk/client-sqs";
@@ -142,6 +153,28 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
     await container?.stop();
     delete process.env.AWS_ENDPOINT_URL;
     delete process.env.AWS_ALLOW_HTTP;
+  });
+
+  afterEach(async () => {
+    // Explicit teardown: delete all S3 objects written by this test and purge
+    // SQS so events don't bleed into the next test's D.5 poll.
+    for (const bucket of [UPLOAD_BUCKET, VECTOR_BUCKET]) {
+      const listed = await s3.send(
+        new ListObjectsV2Command({ Bucket: bucket }),
+      );
+      const objects = (listed.Contents ?? [])
+        .filter((o) => o.Key != null)
+        .map((o) => ({ Key: o.Key! }));
+      if (objects.length > 0) {
+        await s3.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: objects },
+          }),
+        );
+      }
+    }
+    await sqs.send(new PurgeQueueCommand({ QueueUrl: sqsQueueUrl }));
   });
 
   it("D.1: first ingest creates LanceDB table and publishes PROCESSING_COMPLETED", async () => {
