@@ -39,9 +39,8 @@ consumes
   value should be considered an error
 - `source` — the EventBridge source string, environment-qualified:
   `DocumentVectorizationPipeline.<env>` (e.g. `DocumentVectorizationPipeline.dev`).
-  The value is set as a required Lambda env var (`eventSource`) by CDK and must match the
-  `DocumentProcessedRule` EventPattern exactly. Any external consumer previously keyed on
-  `documentworker.rag` must update to the environment-qualified value.
+  Any external consumer previously keyed on `documentworker.rag` must update to the
+  environment-qualified value.
 
 **Required `detail` fields:**
 

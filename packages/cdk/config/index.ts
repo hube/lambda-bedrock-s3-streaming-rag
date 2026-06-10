@@ -1,9 +1,8 @@
 import type { EnvironmentConfig } from "./types";
 import dev from "./dev";
-import alpha from "./alpha";
 import prod from "./prod";
 
-const configs: Record<string, EnvironmentConfig> = { dev, alpha, prod };
+const configs: Record<string, EnvironmentConfig> = { dev, prod };
 
 export function getEnvironmentConfig(name: string): EnvironmentConfig {
   const cfg = configs[name];
@@ -13,8 +12,4 @@ export function getEnvironmentConfig(name: string): EnvironmentConfig {
     );
   }
   return cfg;
-}
-
-export function eventSourceFor(environmentName: string): string {
-  return `DocumentVectorizationPipeline.${environmentName}`;
 }

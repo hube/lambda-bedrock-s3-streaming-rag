@@ -1,5 +1,5 @@
 export interface EnvironmentConfig {
-  name: string;
-  account: string;
-  region: string;
+  deploymentEnvironmentName: string;
+  awsAccountId: string;
+  awsRegion: string;
 }

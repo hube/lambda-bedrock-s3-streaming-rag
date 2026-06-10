@@ -4,6 +4,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["bin/*", "lib/*", "config/*"],
+  "include": ["bin/*", "config/*", "lib/*"],
   "extends": "@tsconfig/node24/tsconfig.json"
 }

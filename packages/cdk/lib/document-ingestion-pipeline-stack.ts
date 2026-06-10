@@ -15,13 +15,15 @@ export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
    * to. This stack owns the EventBridge rule that targets it.
    */
   documentProcessedQueue: sqs.IQueue;
-  /** Short environment name, e.g. "dev", "alpha", "prod". Embedded in resource names. */
+  /** Short environment name, e.g. "dev", "prod". Embedded in resource names. */
   environmentName: string;
-  /** EventBridge source string for DocumentProcessed events, e.g. "DocumentVectorizationPipeline.dev". */
-  eventSource: string;
 }
 
 export class DocumentIngestionPipelineStack extends cdk.Stack {
+  static eventSourceFor(environmentName: string): string {
+    return `DocumentVectorizationPipeline.${environmentName}`;
+  }
+
   public readonly unprocessedDocumentsBucket: s3.Bucket;
   public readonly vectorDbBucket: s3.Bucket;
   public readonly lambdaFunction: lambda.Function;
@@ -137,8 +139,9 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           awsRegion: this.region,
           lanceDbTableName: "vectorstore",
           eventBusName: "default",
-          // Per-env source — must match the DocumentProcessedRule EventPattern
-          eventSource: props.eventSource,
+          eventSource: DocumentIngestionPipelineStack.eventSourceFor(
+            props.environmentName,
+          ),
         },
         tracing: lambda.Tracing.ACTIVE,
       },
@@ -209,7 +212,11 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       {
         eventBus: this.eventBus,
         eventPattern: {
-          source: [props.eventSource],
+          source: [
+            DocumentIngestionPipelineStack.eventSourceFor(
+              props.environmentName,
+            ),
+          ],
           detailType: ["DocumentProcessed"],
         },
         targets: [
