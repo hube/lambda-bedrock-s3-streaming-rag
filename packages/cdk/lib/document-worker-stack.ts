@@ -2,6 +2,10 @@ import * as cdk from "aws-cdk-lib";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
+export interface DocumentWorkerStackProps extends cdk.StackProps {
+  environmentName: string;
+}
+
 /**
  * The "document worker" consumption side: the SQS queue a downstream worker
  * polls for `DocumentProcessed` events, plus a consumer DLQ for messages the
@@ -11,16 +15,18 @@ import { Construct } from "constructs";
 export class DocumentWorkerStack extends cdk.Stack {
   public readonly queue: sqs.Queue;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: DocumentWorkerStackProps) {
     super(scope, id, props);
 
     // Consumer DLQ: redrive target for messages the worker repeatedly fails to
     // process.
     const deadLetterQueue = new sqs.Queue(this, "DocumentProcessedDlq", {
+      queueName: `document-processed-dlq-${props.environmentName}-${this.region}`,
       retentionPeriod: cdk.Duration.days(14),
     });
 
     this.queue = new sqs.Queue(this, "DocumentProcessedQueue", {
+      queueName: `document-processed-${props.environmentName}-${this.region}`,
       deadLetterQueue: { queue: deadLetterQueue, maxReceiveCount: 3 },
     });
 

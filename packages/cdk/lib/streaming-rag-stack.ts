@@ -14,6 +14,8 @@ export interface StreamingRagStackProps extends cdk.StackProps {
   functionUrlAuthType?: lambda.FunctionUrlAuthType;
 
   vectorDbBucket: s3.Bucket;
+  /** Short environment name, e.g. "dev", "alpha", "prod". Embedded in resource names. */
+  environmentName: string;
 }
 
 export class StreamingRagStack extends cdk.Stack {
@@ -48,6 +50,7 @@ export class StreamingRagStack extends cdk.Stack {
 
     // Lambda function using the AWS-provided nodejs24.x runtime
     this.lambdaFunction = new lambda.Function(this, "StreamingRAGFunction", {
+      functionName: `streaming-rag-${props.environmentName}-${this.region}`,
       runtime: lambda.Runtime.NODEJS_24_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset(functionDir, {

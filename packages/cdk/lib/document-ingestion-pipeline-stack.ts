@@ -15,6 +15,10 @@ export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
    * to. This stack owns the EventBridge rule that targets it.
    */
   documentProcessedQueue: sqs.IQueue;
+  /** Short environment name, e.g. "dev", "alpha", "prod". Embedded in resource names. */
+  environmentName: string;
+  /** EventBridge source string for DocumentProcessed events, e.g. "DocumentVectorizationPipeline.dev". */
+  eventSource: string;
 }
 
 export class DocumentIngestionPipelineStack extends cdk.Stack {
@@ -35,6 +39,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "UnprocessedDocumentsBucket",
       {
+        bucketName: `unprocessed-documents-${props.environmentName}-${this.region}-${this.account}`,
         eventBridgeEnabled: true,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       },
@@ -42,6 +47,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
 
     // S3 bucket for LanceDB vector store
     this.vectorDbBucket = new s3.Bucket(this, "VectorDbBucket", {
+      bucketName: `vector-db-${props.environmentName}-${this.region}-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -100,6 +106,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "DocumentVectorizationFunction",
       {
+        functionName: `document-vectorization-${props.environmentName}-${this.region}`,
         runtime: lambda.Runtime.NODEJS_22_X,
         handler: "index.handler",
         code: lambda.Code.fromAsset(functionDir, {
@@ -130,6 +137,8 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           awsRegion: this.region,
           lanceDbTableName: "vectorstore",
           eventBusName: "default",
+          // Per-env source — must match the DocumentProcessedRule EventPattern
+          eventSource: props.eventSource,
         },
         tracing: lambda.Tracing.ACTIVE,
       },
@@ -182,6 +191,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "DocumentProcessedDeliveryDlq",
       {
+        queueName: `document-processed-delivery-dlq-${props.environmentName}-${this.region}`,
         retentionPeriod: cdk.Duration.days(14),
       },
     );
@@ -199,7 +209,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       {
         eventBus: this.eventBus,
         eventPattern: {
-          source: ["documentworker.rag"],
+          source: [props.eventSource],
           detailType: ["DocumentProcessed"],
         },
         targets: [
