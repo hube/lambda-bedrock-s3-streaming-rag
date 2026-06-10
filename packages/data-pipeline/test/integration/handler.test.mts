@@ -100,6 +100,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
     process.env.awsRegion = REGION;
     process.env.lanceDbTableName = "vectorstore";
     process.env.eventBusName = EVENT_BUS;
+    process.env.eventSource = "DocumentVectorizationPipeline.test";
 
     const clientCfg = {
       region: REGION,
@@ -135,7 +136,7 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
       new PutRuleCommand({
         Name: "test-document-processed",
         EventBusName: EVENT_BUS,
-        EventPattern: JSON.stringify({ source: ["documentworker.rag"] }),
+        EventPattern: JSON.stringify({ source: ["DocumentVectorizationPipeline.test"] }),
         State: "ENABLED",
       }),
     );
