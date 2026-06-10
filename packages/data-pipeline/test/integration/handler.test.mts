@@ -136,7 +136,9 @@ describe.skipIf(!dockerAvailable)("handler integration (LocalStack)", () => {
       new PutRuleCommand({
         Name: "test-document-processed",
         EventBusName: EVENT_BUS,
-        EventPattern: JSON.stringify({ source: ["DocumentVectorizationPipeline.test"] }),
+        EventPattern: JSON.stringify({
+          source: ["DocumentVectorizationPipeline.test"],
+        }),
         State: "ENABLED",
       }),
     );
