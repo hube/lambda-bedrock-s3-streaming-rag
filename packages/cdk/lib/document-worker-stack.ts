@@ -102,28 +102,19 @@ export class DocumentWorkerStack extends cdk.Stack {
     documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
 
-    const accessKey = new iam.CfnAccessKey(
+    const accessKey = new iam.AccessKey(
       this,
       "DocumentWorkerFrontendUserAccessKey",
-      {
-        userName: documentWorkerFrontendUser.userName,
-      },
+      { user: documentWorkerFrontendUser },
     );
 
-    new secretsmanager.CfnSecret(
-      this,
-      "DocumentWorkerFrontendUserCredentials",
-      {
-        name: `docworker-frontend-credentials-${env}`,
-        description: "Access key for the docworker frontend IAM user",
-        secretString: cdk.Fn.sub(
-          '{"accessKeyId":"${AccessKeyId}","secretAccessKey":"${SecretAccessKey}"}',
-          {
-            AccessKeyId: accessKey.ref,
-            SecretAccessKey: accessKey.attrSecretAccessKey,
-          },
-        ),
+    new secretsmanager.Secret(this, "DocumentWorkerFrontendUserCredentials", {
+      secretName: `docworker-frontend-credentials-${env}`,
+      description: "Access key for the docworker frontend IAM user",
+      secretObjectValue: {
+        accessKeyId: cdk.SecretValue.unsafePlainText(accessKey.accessKeyId),
+        secretAccessKey: accessKey.secretAccessKey,
       },
-    );
+    });
   }
 }
