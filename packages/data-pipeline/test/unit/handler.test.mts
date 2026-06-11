@@ -332,6 +332,14 @@ describe("handler — EventBridge event shape", () => {
       `arn:aws:s3:::test-unprocessed-bucket/${VALID_KEY}`,
     ]);
   });
+
+  it("C.15b: published Source equals the eventSource env var", async () => {
+    const result = await handler(makeEvent(VALID_KEY));
+    expect(result.statusCode).toBe(200);
+
+    const entry = getPublishedEntry(ebMock);
+    expect(entry.Source).toBe("DocumentVectorizationPipeline.test");
+  });
 });
 
 describe("handler — missing env var", () => {

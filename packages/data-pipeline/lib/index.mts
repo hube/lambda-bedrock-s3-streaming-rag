@@ -22,6 +22,8 @@ const ENV_DEFAULTS = {
   awsRegion: "us-east-1",
   lanceDbTableName: "vectorstore",
   eventBusName: "default",
+  // required — env-qualified per deployment to prevent cross-env event routing
+  eventSource: undefined,
 } as const;
 
 function requireConfig(): void {
@@ -39,6 +41,7 @@ const cfg = () => ({
   lanceDbTableName:
     process.env.lanceDbTableName ?? ENV_DEFAULTS.lanceDbTableName,
   eventBusName: process.env.eventBusName ?? ENV_DEFAULTS.eventBusName,
+  eventSource: process.env.eventSource!,
 });
 
 let _s3: S3Client | undefined;
@@ -59,7 +62,6 @@ const CHUNK_OVERLAP = 200;
 
 // Contract-fixed values for the outbound DocumentProcessed event
 // (see docs/Eventbridge event schema.md).
-const EVENT_SOURCE = "documentworker.rag";
 const DETAIL_TYPE = "DocumentProcessed";
 const SCHEMA_VERSION = "1";
 
@@ -122,7 +124,7 @@ async function publishDocumentProcessed({
       Entries: [
         {
           EventBusName: cfg().eventBusName,
-          Source: EVENT_SOURCE,
+          Source: cfg().eventSource,
           DetailType: DETAIL_TYPE,
           Resources: [`arn:aws:s3:::${bucket}/${key}`],
           Detail: JSON.stringify({

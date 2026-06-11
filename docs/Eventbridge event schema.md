@@ -8,7 +8,7 @@ consumes
   "version": "0",
   "id": "a8e2c1f0-7d3b-4f9a-b1c2-3e4f5a6b7c8d",
   "detail-type": "DocumentProcessed",
-  "source": "documentworker.rag",
+  "source": "DocumentVectorizationPipeline.dev",
   "account": "123456789012",
   "time": "2026-05-26T12:34:56Z",
   "region": "eu-central-1",
@@ -37,6 +37,10 @@ consumes
 - `detail-type` — the discriminator for what kind of event this is. The only
   valid value for this field is `"DocumentProcessed"` at this time. Any other
   value should be considered an error
+- `source` — the EventBridge source string, environment-qualified:
+  `DocumentVectorizationPipeline.<env>` (e.g. `DocumentVectorizationPipeline.dev`).
+  Any external consumer previously keyed on `documentworker.rag` must update to the
+  environment-qualified value.
 
 **Required `detail` fields:**
 
