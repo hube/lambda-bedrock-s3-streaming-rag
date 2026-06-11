@@ -19,7 +19,7 @@ const workerStack = new DocumentWorkerStack(
   `DocumentWorkerStack-${cfg.deploymentEnvironmentName}`,
   {
     env,
-    environmentName: cfg.deploymentEnvironmentName,
+    deploymentEnvironmentName: cfg.deploymentEnvironmentName,
     description: "SQS queue + DLQ for downstream DocumentProcessed consumers",
   },
 );
@@ -29,7 +29,7 @@ const pipelineStack = new DocumentIngestionPipelineStack(
   `DocumentIngestionPipelineStack-${cfg.deploymentEnvironmentName}`,
   {
     env,
-    environmentName: cfg.deploymentEnvironmentName,
+    deploymentEnvironmentName: cfg.deploymentEnvironmentName,
     description: "Stack for document ingestion pipeline",
     documentProcessedQueue: workerStack.queue,
   },
@@ -40,7 +40,7 @@ new StreamingRagStack(
   `StreamingRagStack-${cfg.deploymentEnvironmentName}`,
   {
     env,
-    environmentName: cfg.deploymentEnvironmentName,
+    deploymentEnvironmentName: cfg.deploymentEnvironmentName,
     description:
       "Streaming serverless RAG demo using Lambda, LanceDB on S3, and Amazon Bedrock",
     vectorDbBucket: pipelineStack.vectorDbBucket,

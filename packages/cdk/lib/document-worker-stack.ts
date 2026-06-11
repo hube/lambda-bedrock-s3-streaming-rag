@@ -3,7 +3,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 export interface DocumentWorkerStackProps extends cdk.StackProps {
-  environmentName: string;
+  deploymentEnvironmentName: string;
 }
 
 /**
@@ -21,12 +21,12 @@ export class DocumentWorkerStack extends cdk.Stack {
     // Consumer DLQ: redrive target for messages the worker repeatedly fails to
     // process.
     const deadLetterQueue = new sqs.Queue(this, "DocumentProcessedDlq", {
-      queueName: `document-processed-dlq-${props.environmentName}-${this.region}`,
+      queueName: `document-processed-dlq-${props.deploymentEnvironmentName}-${this.region}`,
       retentionPeriod: cdk.Duration.days(14),
     });
 
     this.queue = new sqs.Queue(this, "DocumentProcessedQueue", {
-      queueName: `document-processed-${props.environmentName}-${this.region}`,
+      queueName: `document-processed-${props.deploymentEnvironmentName}-${this.region}`,
       deadLetterQueue: { queue: deadLetterQueue, maxReceiveCount: 3 },
     });
 
