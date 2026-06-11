@@ -75,13 +75,17 @@ export class DocumentWorkerStack extends cdk.Stack {
       ],
     });
 
-    const frontendUser = new iam.User(this, "FrontendUser", {
-      userName: `docworker-frontend-${env}`,
-    });
+    const documentWorkerFrontendUser = new iam.User(
+      this,
+      "DocumentWorkerFrontendUser",
+      {
+        userName: `docworker-frontend-${env}`,
+      },
+    );
 
     this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
       roleName: `docworker-frontend-access-${env}-${this.region}`,
-      assumedBy: new iam.ArnPrincipal(frontendUser.userArn),
+      assumedBy: new iam.ArnPrincipal(documentWorkerFrontendUser.userArn),
       description:
         "DocumentWorker frontend: scoped access to drive the RAG system",
     });
@@ -98,20 +102,28 @@ export class DocumentWorkerStack extends cdk.Stack {
     documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
 
-    const accessKey = new iam.CfnAccessKey(this, "FrontendUserAccessKey", {
-      userName: frontendUser.userName,
-    });
+    const accessKey = new iam.CfnAccessKey(
+      this,
+      "DocumentWorkerFrontendUserAccessKey",
+      {
+        userName: documentWorkerFrontendUser.userName,
+      },
+    );
 
-    new secretsmanager.CfnSecret(this, "FrontendUserCredentials", {
-      name: `docworker-frontend-credentials-${env}`,
-      description: "Access key for the docworker frontend IAM user",
-      secretString: cdk.Fn.sub(
-        '{"accessKeyId":"${AccessKeyId}","secretAccessKey":"${SecretAccessKey}"}',
-        {
-          AccessKeyId: accessKey.ref,
-          SecretAccessKey: accessKey.attrSecretAccessKey,
-        },
-      ),
-    });
+    new secretsmanager.CfnSecret(
+      this,
+      "DocumentWorkerFrontendUserCredentials",
+      {
+        name: `docworker-frontend-credentials-${env}`,
+        description: "Access key for the docworker frontend IAM user",
+        secretString: cdk.Fn.sub(
+          '{"accessKeyId":"${AccessKeyId}","secretAccessKey":"${SecretAccessKey}"}',
+          {
+            AccessKeyId: accessKey.ref,
+            SecretAccessKey: accessKey.attrSecretAccessKey,
+          },
+        ),
+      },
+    );
   }
 }
