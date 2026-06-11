@@ -1,6 +1,6 @@
 # Frontend Access IAM Role Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Centralize a least-privilege frontend IAM role in `DocumentWorkerStack` with live cross-stack ARN references, by first inverting the stack dependency graph so Worker sits last and can safely import from Pipeline and StreamingRag.
 
@@ -14,48 +14,50 @@
 
 | Action | Path | Responsibility |
 |--------|------|----------------|
-| Create | `packages/cdk/config/event-source.ts` | Single-source-of-truth `eventSourceFor(env)` pure function |
-| Modify | `packages/cdk/config/index.ts` | Re-export `eventSourceFor` so importers use `"../config"` |
-| Modify | `packages/cdk/lib/document-ingestion-pipeline-stack.ts` | Import `eventSourceFor` from config; remove static method; remove routing rule, delivery DLQ, queue policy, `documentProcessedQueue` prop |
-| Modify | `packages/cdk/lib/document-worker-stack.ts` | Add `unprocessedDocumentsBucket`/`ragFunction` props; add routing rule + delivery DLQ; add `FrontendAccessRole` with four policy statements |
+| Create | `packages/cdk/config/document-vectorization-pipeline-event-source.ts` | Single-source-of-truth `documentVectorizationPipelineEventBridgeEventSourceFor(env)` pure function |
+| Modify | `packages/cdk/config/index.ts` | Re-export `documentVectorizationPipelineEventBridgeEventSourceFor` so importers use `"../config"` |
+| Modify | `packages/cdk/lib/document-ingestion-pipeline-stack.ts` | Import renamed function from config; remove static method; remove routing rule, delivery DLQ, queue policy, `documentProcessedQueue` prop |
+| Modify | `packages/cdk/lib/document-worker-stack.ts` | Add `unprocessedDocumentsBucket`/`ragFunction` props; add routing rule + delivery DLQ; add `FrontendAccessRole` using CDK `grant*()` helpers |
 | Modify | `packages/cdk/bin/app.ts` | Reorder stacks (Pipeline → StreamingRag → Worker last); pass new props to Worker; remove `documentProcessedQueue` from Pipeline |
 
 All verification commands run from `packages/cdk`.
 
 ---
 
-## Task 1: Extract `eventSourceFor` into config
+## Task 1: Extract event-source helper into config
 
 **Files:**
-- Create: `packages/cdk/config/event-source.ts`
+- Create: `packages/cdk/config/document-vectorization-pipeline-event-source.ts`
 - Modify: `packages/cdk/config/index.ts`
 - Modify: `packages/cdk/lib/document-ingestion-pipeline-stack.ts`
 
-- [ ] **Step 1: Create `packages/cdk/config/event-source.ts`**
+- [x] **Step 1: Create `packages/cdk/config/document-vectorization-pipeline-event-source.ts`**
 
 ```ts
-export function eventSourceFor(environmentName: string): string {
+export function documentVectorizationPipelineEventBridgeEventSourceFor(
+  environmentName: string,
+): string {
   return `DocumentVectorizationPipeline.${environmentName}`;
 }
 ```
 
-- [ ] **Step 2: Re-export `eventSourceFor` from `packages/cdk/config/index.ts`**
+- [x] **Step 2: Re-export from `packages/cdk/config/index.ts`**
 
-Append one line to the existing file (do not replace existing content):
-
-```ts
-export { eventSourceFor } from "./event-source";
-```
-
-- [ ] **Step 3: Update Pipeline stack to import `eventSourceFor` from config**
-
-In `packages/cdk/lib/document-ingestion-pipeline-stack.ts`, add the import at the top:
+Append one line to the existing file:
 
 ```ts
-import { eventSourceFor } from "../config/event-source";
+export { documentVectorizationPipelineEventBridgeEventSourceFor } from "./document-vectorization-pipeline-event-source";
 ```
 
-Remove the static method from the class (lines ~23–25 in the current file):
+- [x] **Step 3: Update Pipeline stack to import the function from config**
+
+In `packages/cdk/lib/document-ingestion-pipeline-stack.ts`, add the import:
+
+```ts
+import { documentVectorizationPipelineEventBridgeEventSourceFor } from "../config";
+```
+
+Remove the static method from the class:
 
 ```ts
 // DELETE THIS:
@@ -64,48 +66,44 @@ static eventSourceFor(environmentName: string): string {
 }
 ```
 
-Replace the two usages of the static method in the file. There are two occurrences of `DocumentIngestionPipelineStack.eventSourceFor(`:
+Replace the usage in the Lambda `environment` block:
 
-First occurrence (Lambda `environment` block, ~line 142):
 ```ts
 // OLD:
-eventSource: DocumentIngestionPipelineStack.eventSourceFor(
-  props.deploymentEnvironmentName,
-),
+          eventSource: DocumentIngestionPipelineStack.eventSourceFor(
+            props.deploymentEnvironmentName,
+          ),
 // NEW:
-eventSource: eventSourceFor(props.deploymentEnvironmentName),
+          eventSource: documentVectorizationPipelineEventBridgeEventSourceFor(
+            props.deploymentEnvironmentName,
+          ),
 ```
 
-Second occurrence (inside `DocumentProcessedRule` eventPattern, ~line 215):
+Replace the usage in the `DocumentProcessedRule` eventPattern (this rule will be deleted in Task 2, but must compile in the interim):
+
 ```ts
 // OLD:
-source: [
-  DocumentIngestionPipelineStack.eventSourceFor(
-    props.deploymentEnvironmentName,
-  ),
-],
+          source: [DocumentIngestionPipelineStack.eventSourceFor(props.deploymentEnvironmentName)],
 // NEW:
-source: [eventSourceFor(props.deploymentEnvironmentName)],
+          source: [documentVectorizationPipelineEventBridgeEventSourceFor(props.deploymentEnvironmentName)],
 ```
 
-- [ ] **Step 4: Verify Task 1 compiles and synths**
+- [x] **Step 4: Verify Task 1 compiles and synths**
 
 ```bash
 cd packages/cdk && yarn build
 ```
 
-Expected: exits 0, no TypeScript errors.
-
 ```bash
 cd packages/cdk && yarn cdk synth --all
 ```
 
-Expected: synthesizes all three stacks, no dependency-cycle error. Behavior is unchanged from before this task — the routing rule and its policy are still in the Pipeline stack.
+Expected: all three stacks synthesize, no circular-dependency error.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
-git add packages/cdk/config/event-source.ts \
+git add packages/cdk/config/document-vectorization-pipeline-event-source.ts \
         packages/cdk/config/index.ts \
         packages/cdk/lib/document-ingestion-pipeline-stack.ts
 git commit -m "refactor(cdk): extract eventSourceFor into shared config helper"
@@ -115,18 +113,14 @@ git commit -m "refactor(cdk): extract eventSourceFor into shared config helper"
 
 ## Task 2: Migrate routing to Worker, add FrontendAccessRole, rewire app
 
-All steps in this task must be applied before verifying — the TypeScript compiler will reject intermediate states (e.g. required props on Worker not yet passed from `app.ts`). Work through all steps, then verify and commit at Step 12.
+All steps in this task must be applied before verifying. Work through all steps, then verify and commit at Step 12.
 
 **Files:**
 - Modify: `packages/cdk/lib/document-worker-stack.ts`
 - Modify: `packages/cdk/lib/document-ingestion-pipeline-stack.ts`
 - Modify: `packages/cdk/bin/app.ts`
 
-- [ ] **Step 1: Replace the entire `document-worker-stack.ts` with the updated implementation**
-
-The new file adds imports for `events`, `events-targets`, `iam`, `s3`, `lambda`; extends `DocumentWorkerStackProps` with two new required props; relocates the routing rule; and adds the `FrontendAccessRole`.
-
-Full replacement content for `packages/cdk/lib/document-worker-stack.ts`:
+- [x] **Step 1: Replace the entire `document-worker-stack.ts` with the updated implementation**
 
 ```ts
 import * as cdk from "aws-cdk-lib";
@@ -137,7 +131,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
-import { eventSourceFor } from "../config/event-source";
+import { documentVectorizationPipelineEventBridgeEventSourceFor } from "../config";
 
 export interface DocumentWorkerStackProps extends cdk.StackProps {
   deploymentEnvironmentName: string;
@@ -180,52 +174,33 @@ export class DocumentWorkerStack extends cdk.Stack {
     new events.Rule(this, "DocumentProcessedRule", {
       eventBus: defaultBus,
       eventPattern: {
-        source: [eventSourceFor(env)],
+        source: [documentVectorizationPipelineEventBridgeEventSourceFor(env)],
         detailType: ["DocumentProcessed"],
       },
       targets: [
-        new events_targets.SqsQueue(this.queue, { deadLetterQueue: deliveryDlq }),
+        new events_targets.SqsQueue(this.queue, {
+          deadLetterQueue: deliveryDlq,
+        }),
       ],
     });
 
     this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
-      roleName: `frontend-access-${env}-${this.region}`,
+      roleName: `docworker-frontend-access-${env}-${this.region}`,
       assumedBy: new iam.AccountPrincipal(this.account),
-      description: "Scoped access for the frontend to drive the RAG system",
+      description:
+        "DocumentWorker frontend: scoped access to drive the RAG system",
     });
 
-    // S3: upload/delete unprocessed documents (object-level only).
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["s3:PutObject", "s3:DeleteObject"],
-        resources: [props.unprocessedDocumentsBucket.arnForObjects("*")],
-      }),
-    );
-    // SQS: consume DocumentProcessed notifications off the worker queue.
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
-        resources: [this.queue.queueArn],
-      }),
-    );
-    // SQS: park failures on the consumer DLQ.
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:SendMessage"],
-        resources: [deadLetterQueue.queueArn],
-      }),
-    );
-    // Lambda: invoke the RAG query function and its Function URL.
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["lambda:InvokeFunction", "lambda:InvokeFunctionUrl"],
-        resources: [props.ragFunction.functionArn],
-      }),
-    );
+    // CDK grant*() helpers attach identity-based statements and resolve ARNs
+    // via cross-stack exports automatically.
+    props.unprocessedDocumentsBucket.grantPut(this.frontendAccessRole);
+    props.unprocessedDocumentsBucket.grantDelete(this.frontendAccessRole);
+    // grantConsumeMessages: ReceiveMessage + DeleteMessage + ChangeMessageVisibility + GetQueue*
+    this.queue.grantConsumeMessages(this.frontendAccessRole);
+    // grantSendMessages: SendMessage + GetQueueAttributes + GetQueueUrl (park failures on consumer DLQ)
+    deadLetterQueue.grantSendMessages(this.frontendAccessRole);
+    props.ragFunction.grantInvoke(this.frontendAccessRole);
+    props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
 
     new cdk.CfnOutput(this, "DocumentProcessedQueueUrl", {
       description: "SQS queue receiving DocumentProcessed events",
@@ -240,86 +215,11 @@ export class DocumentWorkerStack extends cdk.Stack {
 }
 ```
 
-- [ ] **Step 2: Remove the routing block from `document-ingestion-pipeline-stack.ts`**
+- [x] **Step 2: Remove the routing block from `document-ingestion-pipeline-stack.ts`**
 
-Delete the entire block that spans roughly lines 191–242. This is the block that starts with:
+Delete the entire routing block (delivery DLQ + `fromQueueArn` + `DocumentProcessedRule` + `QueuePolicy`) and the `CfnOutput` for `VectorDbBucketName` remains.
 
-```ts
-// Route DocumentProcessed events off the default bus to the consumer queue.
-```
-
-...and ends with the closing `);` of `new sqs.QueuePolicy(...)`. The exact block to delete:
-
-```ts
-    // Route DocumentProcessed events off the default bus to the consumer queue.
-    // A dedicated delivery DLQ captures events EventBridge cannot deliver.
-    const documentProcessedDeliveryDlq = new sqs.Queue(
-      this,
-      "DocumentProcessedDeliveryDlq",
-      {
-        queueName: `document-processed-delivery-dlq-${props.deploymentEnvironmentName}-${this.region}`,
-        retentionPeriod: cdk.Duration.days(14),
-      },
-    );
-    // Import the worker queue by ARN so the target does not auto-add a
-    // SendMessage policy in the worker stack (which would create a cross-stack
-    // dependency cycle); the grant is added explicitly below.
-    const workerQueue = sqs.Queue.fromQueueArn(
-      this,
-      "DocumentProcessedQueueRef",
-      props.documentProcessedQueue.queueArn,
-    );
-    const documentProcessedRule = new events.Rule(
-      this,
-      "DocumentProcessedRule",
-      {
-        eventBus: this.eventBus,
-        eventPattern: {
-          source: [eventSourceFor(props.deploymentEnvironmentName)],
-          detailType: ["DocumentProcessed"],
-        },
-        targets: [
-          new events_targets.SqsQueue(workerQueue, {
-            deadLetterQueue: documentProcessedDeliveryDlq,
-          }),
-        ],
-      },
-    );
-
-    new sqs.QueuePolicy(this, "DocumentProcessedQueuePolicy", {
-      queues: [workerQueue],
-    }).document.addStatements(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.ServicePrincipal("events.amazonaws.com")],
-        actions: ["sqs:SendMessage"],
-        resources: [workerQueue.queueArn],
-        conditions: {
-          ArnEquals: { "aws:SourceArn": documentProcessedRule.ruleArn },
-        },
-      }),
-    );
-```
-
-After deletion, the only thing between the `S3ObjectAddedRule` block and the `CfnOutput` is the `CfnOutput` for `VectorDbBucketName`.
-
-- [ ] **Step 3: Remove `documentProcessedQueue` from `DocumentIngestionPipelineStackProps`**
-
-In `document-ingestion-pipeline-stack.ts`, the props interface currently looks like:
-
-```ts
-export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
-  /**
-   * Queue (in `DocumentWorkerStack`) that `DocumentProcessed` events are routed
-   * to. This stack owns the EventBridge rule that targets it.
-   */
-  documentProcessedQueue: sqs.IQueue;
-  /** Short environment name, e.g. "dev", "prod". Embedded in resource names. */
-  deploymentEnvironmentName: string;
-}
-```
-
-Replace with:
+- [x] **Step 3: Remove `documentProcessedQueue` from `DocumentIngestionPipelineStackProps`**
 
 ```ts
 export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
@@ -328,24 +228,14 @@ export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
 }
 ```
 
-- [ ] **Step 4: Remove unused imports from `document-ingestion-pipeline-stack.ts`**
-
-The routing removal leaves `events_targets`, `iam`, and `sqs` potentially unused. Check whether each is still referenced:
-
-- `events_targets`: still used for `LambdaFunction` target in `S3ObjectAddedRule` → **keep**
-- `iam`: still used for `PolicyStatement` (Bedrock + EventBridge grants) → **keep**  
-- `sqs`: no longer used (`IQueue` prop removed, `Queue` and `QueuePolicy` removed) → **remove**
-
-Delete the `sqs` import line:
+- [x] **Step 4: Remove the unused `sqs` import from `document-ingestion-pipeline-stack.ts`**
 
 ```ts
 // DELETE THIS LINE:
 import * as sqs from "aws-cdk-lib/aws-sqs";
 ```
 
-- [ ] **Step 5: Rewrite `packages/cdk/bin/app.ts`**
-
-Replace the entire file with the new instantiation order (Pipeline first, StreamingRag second, Worker last):
+- [x] **Step 5: Rewrite `packages/cdk/bin/app.ts`**
 
 ```ts
 #!/usr/bin/env node
@@ -390,44 +280,40 @@ new DocumentWorkerStack(
   {
     env,
     deploymentEnvironmentName: cfg.deploymentEnvironmentName,
-    description: "SQS queue + DLQ for downstream DocumentProcessed consumers",
+    description:
+      "SQS queue + DLQ for downstream DocumentProcessed consumers, plus the frontend-access role",
     unprocessedDocumentsBucket: pipelineStack.unprocessedDocumentsBucket,
     ragFunction: streamingRagStack.lambdaFunction,
   },
 );
 ```
 
-- [ ] **Step 6: Verify TypeScript compiles**
+- [x] **Step 6: Verify TypeScript compiles**
 
 ```bash
 cd packages/cdk && yarn build
 ```
 
-Expected: exits 0 with no errors. If TypeScript reports errors, fix them before proceeding.
+Expected: exits 0.
 
-- [ ] **Step 7: Verify CDK synthesizes without a dependency cycle**
+- [x] **Step 7: Verify CDK synthesizes without a dependency cycle**
 
 ```bash
 cd packages/cdk && yarn cdk synth --all
 ```
 
-Expected output: synthesizes all three stacks (`DocumentIngestionPipelineStack-*`, `StreamingRagStack-*`, `DocumentWorkerStack-*`) with no error. The key success signal is the absence of "Circular dependency between stacks" in the output.
+Expected: all three stacks synthesize, no circular-dependency error.
 
-- [ ] **Step 8: Confirm Worker template has FrontendAccessRole and DocumentProcessedRule**
+- [x] **Step 8: Confirm Worker template has FrontendAccessRole and DocumentProcessedRule**
 
 ```bash
 grep -l "FrontendAccessRole" cdk.out/*.template.json
-```
-
-Expected: prints a path containing `DocumentWorkerStack`.
-
-```bash
 grep -l "DocumentProcessedRule" cdk.out/*.template.json
 ```
 
-Expected: prints a path containing `DocumentWorkerStack` only (not Pipeline).
+Expected: both print a path containing `DocumentWorkerStack` only.
 
-- [ ] **Step 9: Confirm Pipeline template no longer has routing constructs**
+- [x] **Step 9: Confirm Pipeline template no longer has routing constructs**
 
 ```bash
 grep -c "DocumentProcessedRule\|DocumentProcessedDeliveryDlq\|DocumentProcessedQueuePolicy" \
@@ -436,13 +322,7 @@ grep -c "DocumentProcessedRule\|DocumentProcessedDeliveryDlq\|DocumentProcessedQ
 
 Expected: `0`
 
-```bash
-grep -c "S3ObjectAddedRule" cdk.out/DocumentIngestionPipelineStack-*.template.json
-```
-
-Expected: `1` or more (the S3→vectorization rule is still there).
-
-- [ ] **Step 10: Confirm FrontendAccessRoleArn output exists in Worker template**
+- [x] **Step 10: Confirm FrontendAccessRoleArn output exists in Worker template**
 
 ```bash
 grep -c "FrontendAccessRoleArn" cdk.out/DocumentWorkerStack-*.template.json
@@ -450,15 +330,15 @@ grep -c "FrontendAccessRoleArn" cdk.out/DocumentWorkerStack-*.template.json
 
 Expected: `1`
 
-- [ ] **Step 11: Confirm cross-stack references use `Fn::ImportValue` (not hardcoded names)**
+- [x] **Step 11: Confirm cross-stack references use `Fn::ImportValue`**
 
 ```bash
 grep "Fn::ImportValue" cdk.out/DocumentWorkerStack-*.template.json | head -5
 ```
 
-Expected: shows `Fn::ImportValue` entries for the bucket ARN and Lambda ARN imported from the other stacks. This confirms CDK is wiring real exports, not embedding string literals.
+Expected: shows `Fn::ImportValue` entries for the bucket ARN and Lambda ARN.
 
-- [ ] **Step 12: Commit Task 2**
+- [x] **Step 12: Commit Task 2**
 
 ```bash
 git add packages/cdk/lib/document-worker-stack.ts \
@@ -472,6 +352,13 @@ git commit -m "feat(cdk): add FrontendAccessRole to Worker; relocate DocumentPro
 ## Post-implementation notes
 
 **Deploy order:** `cdk deploy --all` respects the dependency graph automatically. Pipeline deploys first, StreamingRag second, Worker last. During the first deploy after this change, CloudFormation removes the routing rule and delivery DLQ from Pipeline and recreates them in Worker. The delivery DLQ is an error-path queue and is normally empty, so no message loss risk.
+
+**grant*() action coverage:**
+- `grantPut` → `s3:PutObject` + `s3:PutObjectLegalHold/Retention/Tag, AbortMultipartUpload` on `arnForObjects("*")`
+- `grantDelete` → `s3:DeleteObject*`
+- `grantConsumeMessages` → `sqs:ReceiveMessage`, `sqs:ChangeMessageVisibility`, `sqs:GetQueueUrl`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes`
+- `grantSendMessages` → `sqs:SendMessage`, `sqs:GetQueueAttributes`, `sqs:GetQueueUrl`
+- `grantInvoke` → `lambda:InvokeFunction`; `grantInvokeUrl` → `lambda:InvokeFunctionUrl`
 
 **Optional smoke test (post-deploy):** Assume the role ARN from the `FrontendAccessRoleArn` output, then:
 - `aws s3 cp <file> s3://<unprocessed-bucket>/<userId>/<groupId>/test.pdf` — should succeed
