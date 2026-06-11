@@ -17,7 +17,7 @@ export interface DocumentWorkerStackProps extends cdk.StackProps {
 }
 
 export class DocumentWorkerStack extends cdk.Stack {
-  public readonly queue: sqs.Queue;
+  public readonly documentVectorizationEventsQueue: sqs.Queue;
   public readonly frontendAccessRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: DocumentWorkerStackProps) {
@@ -26,35 +26,50 @@ export class DocumentWorkerStack extends cdk.Stack {
     const env = props.deploymentEnvironmentName;
 
     // Consumer DLQ: redrive target for messages the worker repeatedly fails to process.
-    const deadLetterQueue = new sqs.Queue(this, "DocumentProcessedDlq", {
-      queueName: `document-processed-dlq-${env}-${this.region}`,
-      retentionPeriod: cdk.Duration.days(14),
-    });
+    const documentVectorizationEventsDlq = new sqs.Queue(
+      this,
+      "DocumentVectorizationEventsDlq",
+      {
+        queueName: `document-vectorization-events-dlq-${env}-${this.region}`,
+        retentionPeriod: cdk.Duration.days(14),
+      },
+    );
 
-    this.queue = new sqs.Queue(this, "DocumentProcessedQueue", {
-      queueName: `document-processed-${env}-${this.region}`,
-      deadLetterQueue: { queue: deadLetterQueue, maxReceiveCount: 3 },
-    });
+    this.documentVectorizationEventsQueue = new sqs.Queue(
+      this,
+      "DocumentVectorizationEventsQueue",
+      {
+        queueName: `document-vectorization-events-${env}-${this.region}`,
+        deadLetterQueue: {
+          queue: documentVectorizationEventsDlq,
+          maxReceiveCount: 3,
+        },
+      },
+    );
 
     // Delivery DLQ: captures events EventBridge cannot deliver to this queue.
-    const deliveryDlq = new sqs.Queue(this, "DocumentProcessedDeliveryDlq", {
-      queueName: `document-processed-delivery-dlq-${env}-${this.region}`,
-      retentionPeriod: cdk.Duration.days(14),
-    });
-    const defaultBus = events.EventBus.fromEventBusName(
+    const documentVectorizationEventsDeliveryDlq = new sqs.Queue(
+      this,
+      "DocumentVectorizationEventsDeliveryDlq",
+      {
+        queueName: `document-vectorization-events-delivery-dlq-${env}-${this.region}`,
+        retentionPeriod: cdk.Duration.days(14),
+      },
+    );
+    const defaultEventBus = events.EventBus.fromEventBusName(
       this,
       "DefaultEventBus",
       "default",
     );
     new events.Rule(this, "DocumentProcessedRule", {
-      eventBus: defaultBus,
+      eventBus: defaultEventBus,
       eventPattern: {
         source: [documentVectorizationPipelineEventBridgeEventSourceFor(env)],
         detailType: ["DocumentProcessed"],
       },
       targets: [
-        new events_targets.SqsQueue(this.queue, {
-          deadLetterQueue: deliveryDlq,
+        new events_targets.SqsQueue(this.documentVectorizationEventsQueue, {
+          deadLetterQueue: documentVectorizationEventsDeliveryDlq,
         }),
       ],
     });
@@ -66,17 +81,18 @@ export class DocumentWorkerStack extends cdk.Stack {
         "DocumentWorker frontend: scoped access to drive the RAG system",
     });
 
+    // CDK grant*() helpers attach identity-based statements and resolve ARNs
+    // via cross-stack exports automatically.
     props.unprocessedDocumentsBucket.grantPut(this.frontendAccessRole);
     props.unprocessedDocumentsBucket.grantDelete(this.frontendAccessRole);
-    this.queue.grantConsumeMessages(this.frontendAccessRole);
-    deadLetterQueue.grantSendMessages(this.frontendAccessRole);
+    // grantConsumeMessages: ReceiveMessage + DeleteMessage + ChangeMessageVisibility + GetQueue*
+    this.documentVectorizationEventsQueue.grantConsumeMessages(
+      this.frontendAccessRole,
+    );
+    // grantSendMessages: SendMessage + GetQueueAttributes + GetQueueUrl (park failures on consumer DLQ)
+    documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvoke(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
-
-    new cdk.CfnOutput(this, "DocumentProcessedQueueUrl", {
-      description: "SQS queue receiving DocumentProcessed events",
-      value: this.queue.queueUrl,
-    });
 
     new cdk.CfnOutput(this, "FrontendAccessRoleArn", {
       description: "IAM role the frontend assumes to access the RAG system",

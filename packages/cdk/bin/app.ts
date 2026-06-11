@@ -40,8 +40,7 @@ new DocumentWorkerStack(
   {
     env,
     deploymentEnvironmentName: cfg.deploymentEnvironmentName,
-    description:
-      "SQS queue + DLQ for downstream DocumentProcessed consumers, plus the frontend-access role",
+    description: "DocumentWorker.com frontend infrastructure",
     unprocessedDocumentsBucket: pipelineStack.unprocessedDocumentsBucket,
     ragFunction: streamingRagStack.lambdaFunction,
   },
