@@ -13,3 +13,5 @@ export function getEnvironmentConfig(name: string): EnvironmentConfig {
   }
   return cfg;
 }
+
+export { eventSourceFor } from "./event-source";

@@ -8,6 +8,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import { spawnSync } from "child_process";
 import { Construct } from "constructs";
 import * as path from "path";
+import { eventSourceFor } from "../config";
 
 export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
   /**
@@ -20,10 +21,6 @@ export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
 }
 
 export class DocumentIngestionPipelineStack extends cdk.Stack {
-  static eventSourceFor(environmentName: string): string {
-    return `DocumentVectorizationPipeline.${environmentName}`;
-  }
-
   public readonly unprocessedDocumentsBucket: s3.Bucket;
   public readonly vectorDbBucket: s3.Bucket;
   public readonly lambdaFunction: lambda.Function;
@@ -139,9 +136,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           awsRegion: this.region,
           lanceDbTableName: "vectorstore",
           eventBusName: "default",
-          eventSource: DocumentIngestionPipelineStack.eventSourceFor(
-            props.deploymentEnvironmentName,
-          ),
+          eventSource: eventSourceFor(props.deploymentEnvironmentName),
         },
         tracing: lambda.Tracing.ACTIVE,
       },
@@ -212,11 +207,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       {
         eventBus: this.eventBus,
         eventPattern: {
-          source: [
-            DocumentIngestionPipelineStack.eventSourceFor(
-              props.deploymentEnvironmentName,
-            ),
-          ],
+          source: [eventSourceFor(props.deploymentEnvironmentName)],
           detailType: ["DocumentProcessed"],
         },
         targets: [
