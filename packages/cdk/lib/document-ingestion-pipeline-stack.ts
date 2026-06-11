@@ -7,7 +7,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import { spawnSync } from "child_process";
 import { Construct } from "constructs";
 import * as path from "path";
-import { eventSourceFor } from "../config";
+import { documentVectorizationPipelineEventBridgeEventSourceFor } from "../config";
 
 export interface DocumentIngestionPipelineStackProps extends cdk.StackProps {
   /** Short environment name, e.g. "dev", "prod". Embedded in resource names. */
@@ -130,7 +130,9 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
           awsRegion: this.region,
           lanceDbTableName: "vectorstore",
           eventBusName: "default",
-          eventSource: eventSourceFor(props.deploymentEnvironmentName),
+          eventSource: documentVectorizationPipelineEventBridgeEventSourceFor(
+            props.deploymentEnvironmentName,
+          ),
         },
         tracing: lambda.Tracing.ACTIVE,
       },

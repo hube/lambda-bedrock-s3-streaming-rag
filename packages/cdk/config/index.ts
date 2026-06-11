@@ -14,4 +14,4 @@ export function getEnvironmentConfig(name: string): EnvironmentConfig {
   return cfg;
 }
 
-export { eventSourceFor } from "./event-source";
+export { documentVectorizationPipelineEventBridgeEventSourceFor } from "./document-vectorization-pipeline-event-source";

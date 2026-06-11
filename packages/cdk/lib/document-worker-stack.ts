@@ -6,7 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
-import { eventSourceFor } from "../config";
+import { documentVectorizationPipelineEventBridgeEventSourceFor } from "../config";
 
 export interface DocumentWorkerStackProps extends cdk.StackProps {
   deploymentEnvironmentName: string;
@@ -49,7 +49,7 @@ export class DocumentWorkerStack extends cdk.Stack {
     new events.Rule(this, "DocumentProcessedRule", {
       eventBus: defaultBus,
       eventPattern: {
-        source: [eventSourceFor(env)],
+        source: [documentVectorizationPipelineEventBridgeEventSourceFor(env)],
         detailType: ["DocumentProcessed"],
       },
       targets: [
@@ -60,39 +60,18 @@ export class DocumentWorkerStack extends cdk.Stack {
     });
 
     this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
-      roleName: `frontend-access-${env}-${this.region}`,
+      roleName: `docworker-frontend-access-${env}-${this.region}`,
       assumedBy: new iam.AccountPrincipal(this.account),
-      description: "Scoped access for the frontend to drive the RAG system",
+      description:
+        "DocumentWorker frontend: scoped access to drive the RAG system",
     });
 
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["s3:PutObject", "s3:DeleteObject"],
-        resources: [props.unprocessedDocumentsBucket.arnForObjects("*")],
-      }),
-    );
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
-        resources: [this.queue.queueArn],
-      }),
-    );
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:SendMessage"],
-        resources: [deadLetterQueue.queueArn],
-      }),
-    );
-    this.frontendAccessRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["lambda:InvokeFunction", "lambda:InvokeFunctionUrl"],
-        resources: [props.ragFunction.functionArn],
-      }),
-    );
+    props.unprocessedDocumentsBucket.grantPut(this.frontendAccessRole);
+    props.unprocessedDocumentsBucket.grantDelete(this.frontendAccessRole);
+    this.queue.grantConsumeMessages(this.frontendAccessRole);
+    deadLetterQueue.grantSendMessages(this.frontendAccessRole);
+    props.ragFunction.grantInvoke(this.frontendAccessRole);
+    props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
 
     new cdk.CfnOutput(this, "DocumentProcessedQueueUrl", {
       description: "SQS queue receiving DocumentProcessed events",
