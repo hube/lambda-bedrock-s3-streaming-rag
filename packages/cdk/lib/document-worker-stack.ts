@@ -93,10 +93,5 @@ export class DocumentWorkerStack extends cdk.Stack {
     documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvoke(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
-
-    new cdk.CfnOutput(this, "FrontendAccessRoleArn", {
-      description: "IAM role the frontend assumes to access the RAG system",
-      value: this.frontendAccessRole.roleArn,
-    });
   }
 }
