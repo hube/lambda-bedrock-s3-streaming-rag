@@ -4,7 +4,7 @@
 
 **Goal:** Add an IAM user to `DocumentWorkerStack` whose static access key allows the deployed frontend (Hetzner/Lightsail/local) to assume `frontendAccessRole` and drive the RAG system.
 
-**Architecture:** An `iam.User` is created first, then `frontendAccessRole`'s trust policy is narrowed from `AccountPrincipal` (whole account) to `ArnPrincipal(frontendUser.userArn)`. An `iam.CfnAccessKey` and a `secretsmanager.CfnSecret` storing `{ accessKeyId, secretAccessKey }` as JSON are added to the same stack. The frontend fetches credentials from Secrets Manager at startup and calls `sts:AssumeRole` to obtain temporary credentials.
+**Architecture:** An `iam.User` is created first, then `frontendAccessRole`'s trust policy is narrowed from `AccountPrincipal` (whole account) to `ArnPrincipal(documentWorkerFrontendUser.userArn)`. An `iam.AccessKey` is created and its secret access key is stored in a `secretsmanager.Secret` as a plain string. The frontend reads the secret from Secrets Manager at startup and calls `sts:AssumeRole` to obtain temporary credentials.
 
 **Tech Stack:** AWS CDK v2, TypeScript, `aws-cdk-lib/aws-iam`, `aws-cdk-lib/aws-secretsmanager`
 
@@ -36,13 +36,17 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 Replace the existing `frontendAccessRole` block with the user construct inserted immediately before it:
 
 ```typescript
-const frontendUser = new iam.User(this, "FrontendUser", {
-  userName: `docworker-frontend-${env}`,
-});
+const documentWorkerFrontendUser = new iam.User(
+  this,
+  "DocumentWorkerFrontendUser",
+  {
+    userName: `docworker-frontend-${env}`,
+  },
+);
 
 this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
   roleName: `docworker-frontend-access-${env}-${this.region}`,
-  assumedBy: new iam.ArnPrincipal(frontendUser.userArn),
+  assumedBy: new iam.ArnPrincipal(documentWorkerFrontendUser.userArn),
   description:
     "DocumentWorker frontend: scoped access to drive the RAG system",
 });
@@ -55,24 +59,20 @@ this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
 After `props.ragFunction.grantInvokeUrl(this.frontendAccessRole)`, append:
 
 ```typescript
-const accessKey = new iam.CfnAccessKey(this, "FrontendUserAccessKey", {
-  userName: frontendUser.userName,
-});
+const accessKey = new iam.AccessKey(
+  this,
+  "DocumentWorkerFrontendUserAccessKey",
+  { user: documentWorkerFrontendUser },
+);
 
-new secretsmanager.CfnSecret(this, "FrontendUserCredentials", {
-  name: `docworker-frontend-credentials-${env}`,
-  description: "Access key for the docworker frontend IAM user",
-  secretString: cdk.Fn.sub(
-    '{"accessKeyId":"${AccessKeyId}","secretAccessKey":"${SecretAccessKey}"}',
-    {
-      AccessKeyId: accessKey.ref,
-      SecretAccessKey: accessKey.attrSecretAccessKey,
-    },
-  ),
+new secretsmanager.Secret(this, "DocumentWorkerFrontendUserCredentials", {
+  secretName: `docworker-frontend-credentials-${env}`,
+  description: `Secret access key for the docworker-frontend-${env} IAM user`,
+  secretStringValue: accessKey.secretAccessKey,
 });
 ```
 
-`cdk.Fn.sub` renders as CloudFormation `Fn::Sub` so tokens resolve at deploy time.
+The secret stores only the secret access key as a plain string. The access key ID (not sensitive) is retrievable via `aws iam list-access-keys --user-name docworker-frontend-{env}`.
 
 - [x] **Step 4: Run typecheck, lint, and format check**
 
@@ -89,7 +89,7 @@ Expected: all three exit 0.
 
 ```bash
 cd packages/cdk
-yarn cdk synth --all 2>&1 | head -5
+yarn cdk synth --all 2>&1 | tail -3
 ```
 
 ```bash
@@ -98,9 +98,9 @@ const t = JSON.parse(require('fs').readFileSync(
   'cdk.out/DocumentWorkerStack-dev.template.json', 'utf8'
 ));
 const types = Object.values(t.Resources).map(r => r.Type);
-console.log('FrontendUser:', types.includes('AWS::IAM::User'));
-console.log('FrontendUserAccessKey:', types.includes('AWS::IAM::AccessKey'));
-console.log('FrontendUserCredentials:', types.includes('AWS::SecretsManager::Secret'));
+console.log('IAM::User:', types.includes('AWS::IAM::User'));
+console.log('IAM::AccessKey:', types.includes('AWS::IAM::AccessKey'));
+console.log('SecretsManager::Secret:', types.includes('AWS::SecretsManager::Secret'));
 "
 ```
 
@@ -108,11 +108,7 @@ console.log('FrontendUserCredentials:', types.includes('AWS::SecretsManager::Sec
 
 ```bash
 git add packages/cdk/lib/document-worker-stack.ts
-git commit -m "feat(cdk): add frontend IAM user and credentials for DocumentWorkerStack
-
-Creates docworker-frontend-{env} IAM user with a static access key stored
-in Secrets Manager. Narrows frontendAccessRole trust from AccountPrincipal
-to the specific user ARN."
+git commit -m "feat(cdk): add frontend IAM user and credentials for DocumentWorkerStack"
 ```
 
-**Committed:** `3cbdd9c`
+**Commits:** `3cbdd9c` (initial) → `6394d19` (rename to DocumentWorkerFrontendUser) → `f394ef1` (L2 constructs) → `aec96c4` (secret access key only)
