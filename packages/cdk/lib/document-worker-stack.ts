@@ -4,6 +4,7 @@ import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { documentVectorizationPipelineEventBridgeEventSourceFor } from "../config";
@@ -74,9 +75,17 @@ export class DocumentWorkerStack extends cdk.Stack {
       ],
     });
 
+    const documentWorkerFrontendUser = new iam.User(
+      this,
+      "DocumentWorkerFrontendUser",
+      {
+        userName: `docworker-frontend-${env}`,
+      },
+    );
+
     this.frontendAccessRole = new iam.Role(this, "FrontendAccessRole", {
       roleName: `docworker-frontend-access-${env}-${this.region}`,
-      assumedBy: new iam.AccountPrincipal(this.account),
+      assumedBy: new iam.ArnPrincipal(documentWorkerFrontendUser.userArn),
       description:
         "DocumentWorker frontend: scoped access to drive the RAG system",
     });
@@ -92,5 +101,17 @@ export class DocumentWorkerStack extends cdk.Stack {
     // grantSendMessages: SendMessage + GetQueueAttributes + GetQueueUrl (park failures on consumer DLQ)
     documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
+
+    const accessKey = new iam.AccessKey(
+      this,
+      "DocumentWorkerFrontendUserAccessKey",
+      { user: documentWorkerFrontendUser },
+    );
+
+    new secretsmanager.Secret(this, "DocumentWorkerFrontendUserCredentials", {
+      secretName: `docworker-frontend-credentials-${env}`,
+      description: `Secret access key for the docworker-frontend-${env} IAM user`,
+      secretStringValue: accessKey.secretAccessKey,
+    });
   }
 }
