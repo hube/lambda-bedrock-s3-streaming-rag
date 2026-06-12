@@ -110,11 +110,8 @@ export class DocumentWorkerStack extends cdk.Stack {
 
     new secretsmanager.Secret(this, "DocumentWorkerFrontendUserCredentials", {
       secretName: `docworker-frontend-credentials-${env}`,
-      description: "Access key for the docworker frontend IAM user",
-      secretObjectValue: {
-        accessKeyId: cdk.SecretValue.unsafePlainText(accessKey.accessKeyId),
-        secretAccessKey: accessKey.secretAccessKey,
-      },
+      description: `Secret access key for the docworker-frontend-${env} IAM user`,
+      secretStringValue: accessKey.secretAccessKey,
     });
   }
 }
