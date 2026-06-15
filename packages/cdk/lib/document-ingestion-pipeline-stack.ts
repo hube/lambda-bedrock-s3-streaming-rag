@@ -34,14 +34,14 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       {
         bucketName: `unprocessed-documents-${props.deploymentEnvironmentName}-${this.region}-${this.account}`,
         eventBridgeEnabled: true,
-        removalPolicy: cdk.RemovalPolicy.DESTROY,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
       },
     );
 
     // S3 bucket for LanceDB vector store
     this.vectorDbBucket = new s3.Bucket(this, "VectorDbBucket", {
       bucketName: `vector-db-${props.deploymentEnvironmentName}-${this.region}-${this.account}`,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     const functionDir = path.join(__dirname, "../../data-pipeline");
