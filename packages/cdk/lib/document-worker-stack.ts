@@ -98,8 +98,6 @@ export class DocumentWorkerStack extends cdk.Stack {
     this.documentVectorizationEventsQueue.grantConsumeMessages(
       this.frontendAccessRole,
     );
-    // grantSendMessages: SendMessage + GetQueueAttributes + GetQueueUrl (park failures on consumer DLQ)
-    documentVectorizationEventsDlq.grantSendMessages(this.frontendAccessRole);
     props.ragFunction.grantInvokeUrl(this.frontendAccessRole);
 
     const accessKey = new iam.AccessKey(
