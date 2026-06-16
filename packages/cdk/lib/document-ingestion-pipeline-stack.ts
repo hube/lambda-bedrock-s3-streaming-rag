@@ -32,7 +32,8 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
       this,
       "UnprocessedDocumentsBucket",
       {
-        bucketName: `unprocessed-documents-${props.deploymentEnvironmentName}-${this.region}-${this.account}`,
+        bucketNamePrefix: `unprocessed-documents-${props.deploymentEnvironmentName}`,
+        bucketNamespace: s3.BucketNamespace.ACCOUNT_REGIONAL,
         eventBridgeEnabled: true,
         removalPolicy: cdk.RemovalPolicy.RETAIN,
       },
@@ -40,7 +41,8 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
 
     // S3 bucket for LanceDB vector store
     this.vectorDbBucket = new s3.Bucket(this, "VectorDbBucket", {
-      bucketName: `vector-db-${props.deploymentEnvironmentName}-${this.region}-${this.account}`,
+      bucketNamePrefix: `vector-db-${props.deploymentEnvironmentName}`,
+      bucketNamespace: s3.BucketNamespace.ACCOUNT_REGIONAL,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
