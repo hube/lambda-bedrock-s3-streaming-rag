@@ -35,7 +35,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
         bucketNamePrefix: `unprocessed-documents-${props.deploymentEnvironmentName}`,
         bucketNamespace: s3.BucketNamespace.ACCOUNT_REGIONAL,
         eventBridgeEnabled: true,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        removalPolicy: cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
       },
     );
 
@@ -43,7 +43,7 @@ export class DocumentIngestionPipelineStack extends cdk.Stack {
     this.vectorDbBucket = new s3.Bucket(this, "VectorDbBucket", {
       bucketNamePrefix: `vector-db-${props.deploymentEnvironmentName}`,
       bucketNamespace: s3.BucketNamespace.ACCOUNT_REGIONAL,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
     });
 
     const functionDir = path.join(__dirname, "../../data-pipeline");
