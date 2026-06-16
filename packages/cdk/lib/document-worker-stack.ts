@@ -103,7 +103,7 @@ export class DocumentWorkerStack extends cdk.Stack {
     const accessKey = new iam.AccessKey(
       this,
       "DocumentWorkerFrontendUserAccessKey",
-      { user: documentWorkerFrontendUser },
+      { user: documentWorkerFrontendUser, serial: 2 },
     );
 
     new secretsmanager.Secret(this, "DocumentWorkerFrontendUserCredentials", {
