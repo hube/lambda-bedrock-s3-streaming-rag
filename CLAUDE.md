@@ -121,28 +121,11 @@ Pass `"model": "<model-id>"` in the request body to override the query model.
 
 ## Important Notes
 
-- Confirm the state of the filesystem and git repo prior to making any assumptions about the code
-- When adding new dependencies, check for and add the latest versions of those dependencies
-- Clearly distinguish between guesses or hypotheses and verified claims. Describe how verified claims were verified
 - The `@lancedb` / `pdf-parse` packages contain native binaries; CDK bundling compiles/installs them for the Lambda Linux runtime (locally if Node is available, otherwise via Docker).
 - LanceDB connects directly to S3 at runtime — no EFS or local disk needed.
 - The LanceDB table name is always `vectorstore` (env var `lanceDbTable` in the query function, `lanceDbTableName` in the data-pipeline).
 - The ingestion Lambda needs the public `napi-rs-canvas` Lambda layer; its version is region-specific (see the `CfnMapping` in the pipeline stack). Deploying to an unlisted region fails at CloudFormation time.
 
-## Code Comments
-
-- Keep comments minimal and focused on _why_, not _what_. Don't narrate what the code plainly does (e.g. `// Emit one event to EventBridge` above an obvious publish call).
-- Don't restate the same rationale in more than one place. When a non-obvious choice (such as importing the worker queue by ARN to avoid a cross-stack dependency cycle) is already explained where it's made, don't repeat that explanation at each related call site — one comment at the source is enough.
-
-## Responding to PR Review Comments
-
-- **Fetch all comment threads before replying to any.** The GitHub API default page size is 30; a PR with many threads silently truncates. Always use `per_page=100` (or paginate) when listing review comments: `gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100"`. Replying to a partial list leaves threads unanswered and requires another round.
-- **Reply in the thread, not as a top-level PR comment.** Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` with the original comment's ID as `{id}`.
-- Provide a summary of changes as a top-level PR comment
-
 ## Verifying Before You Commit
 
-- **Run the checks before committing or pushing, not after.** For Lambda code (`packages/data-pipeline`, `packages/rag-query-function`): `yarn typecheck`, `yarn lint`, `yarn format:check`, and `yarn build`. For CDK changes (`packages/cdk`): `yarn build` and `yarn cdk synth --all` (must succeed with no dependency cycle). A change that doesn't compile must never reach a commit.
-- **Never state that verification passed unless that exact command ran and succeeded in this session.** Don't write "typecheck/lint/build all pass" in a commit message, PR body, or review reply on the basis of expectation — quote only results you actually observed. Claiming unverified results is worse than saying nothing.
-- **Confirm an edit actually applied before relying on it.** If an `Edit` reports the target string wasn't found, the file is unchanged — re-read and redo it; don't assume it landed.
-- **Read the real file state, not a remembered or display-garbled version, before editing.** Tool output can be truncated or show artifacts; verify against the file itself.
+For Lambda code (`packages/data-pipeline`, `packages/rag-query-function`): run `yarn typecheck`, `yarn lint`, `yarn format:check`, and `yarn build`. For CDK changes (`packages/cdk`): run `yarn build` and `yarn cdk synth --all` (must succeed with no dependency cycle).
