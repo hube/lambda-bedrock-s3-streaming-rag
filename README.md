@@ -14,37 +14,22 @@ Important: this application uses various AWS services and there are costs associ
 
 ## Deployment Instructions
 
-1. Create a new directory, navigate to that directory in a terminal and clone the GitHub repository:
-   ```
-   git clone https://github.com/shafkevi/lambda-bedrock-s3-streaming-rag
-   ```
-1. Change directory to the pattern directory:
-   ```
-   cd lambda-bedrock-s3-streaming-rag
-   ```
-1. From the command line, use AWS SAM to deploy the AWS resources for the pattern as specified in the template.yml file:
-   ```
-   sam build -u
-   sam deploy --guided
-   ```
-1. During the prompts:
-   - Enter a stack name
-   - Enter the desired AWS Region
-   - Allow SAM CLI to create IAM roles with the required permissions.
-
-   Once you have run `sam deploy --guided` mode once and saved arguments to a configuration file (samconfig.toml), you can use `sam deploy` in future to use these defaults.
-
-1. Note your stack name and outputs from the SAM deployment process. These contain the resource names and/or ARNs which are used for testing.
+```
+yarn cdk synth
+yarn cdk deploy --all -c env=dev --profile default
+yarn cdk deploy --all -c env=alpha --profile alpha
+yarn cdk deploy --all -c env=prod --profile prod
+```
 
 ## How it works
 
 ![high level diagram](./assets/StreamingServerlessRAG.png)
 
-With this pattern we want to showcase how to implement a streaming serverless Retrieval Augmented Generation (RAG) architecture.  
-Customers asked for a way to quickly test RAG capabilities on a small number of documents without managing infrastructure for contextual knowledge and non-parametric memory.  
-In this pattern, we run a RAG workflow in a single Lambda function, so that customers only pay for the infrastructure they use, when they use it.  
-We use [LanceDB](https://lancedb.com/) with Amazon S3 as backend for embedding storage.  
-This pattern deploys one Lambda function and an S3 Bucket where to store your embeddings.  
+With this pattern we want to showcase how to implement a streaming serverless Retrieval Augmented Generation (RAG) architecture.
+Customers asked for a way to quickly test RAG capabilities on a small number of documents without managing infrastructure for contextual knowledge and non-parametric memory.
+In this pattern, we run a RAG workflow in a single Lambda function, so that customers only pay for the infrastructure they use, when they use it.
+We use [LanceDB](https://lancedb.com/) with Amazon S3 as backend for embedding storage.
+This pattern deploys one Lambda function and an S3 Bucket where to store your embeddings.
 This pattern makes use of Bedrock to calculate embeddings with Amazon Titan Embedding and any Amazon Bedrock chat model as prediction LLM.
 The responses are streamed using Lambda URL function streaming for a quicker time to first byte and a better user experience.
 We also provide a local pipeline to ingest your PDFs and upload them to S3.
